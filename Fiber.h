@@ -15,11 +15,6 @@
  * との通達を受けたため、以降その改修に取り組んでいる。日本語のメモは全て私が取ったものである。
  * 2025年10月
  * 湯淺　圭太
- * 
- * 以下コメント　11/26追記
- * 全てのTrapping Efficiencyの計算においてattenuation lengthとabsorption lengthの両方を考慮し、
- * それが標準装備になるように改修したい。
- * また、absorption lengthの効果は計算が非常に重いため、一度テキストファイルで出力させ、それがある場合はそこから読み取るという形を取ることで計算を高速化したい。
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -65,12 +60,6 @@ private:
   vector<double> table_val; //計算された初期位置分布の値
   bool is_table_loaded = false; //読み込み済みフラグ
   const string table_filename = "Initial_a_distribution.txt"; //保存ファイル名
-  /*! Workspaces for numerical integration */
-  gsl_integration_workspace *_w1;
-  gsl_integration_workspace *_w2;
-  gsl_integration_workspace *_w3;
-  gsl_integration_workspace *_w4;  
-  gsl_integration_workspace *_w5;  
   /**
    * Function that describes the integrand of equation (9)
    * The cosThetaMax is calculated by (10).
@@ -113,7 +102,9 @@ private:
     double a = fiber->GetA();
     double mumin = fiber->Calc_cosThetaMax(phi, a);
     double result, err;
-    gsl_integration_qag(&F, mumin, 1, 0, 1e-6, 1000, GSL_INTEG_GAUSS31, fiber->GetW1(), &result, &err);
+    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
+    gsl_integration_qag(&F, mumin, 1, 0, 1e-6, 1000, GSL_INTEG_GAUSS31, local_w, &result, &err);
+    gsl_integration_workspace_free(local_w); 
     return result;
   }
   
@@ -172,34 +163,36 @@ private:
   }
 
   //aの初期位置を決定する分布の平均化
-  double Calculate_Raw_Adist(double a, double psiStep = 1.0) {
+  double Calculate_Raw_Adist(double a, double psiStep = 0.001) {
     double psi = 0.0;
     double dPsi = psiStep * M_PI / 180.0;
     double sum_Adist = 0.0;
     double sum_weight = 0.0;
 
     while (psi < M_PI / 2.0) {
-        SetA(a);
-        SetPsi(psi);
-        double r = GetD1();
-        double l_abs = GetLabs();
-        double s = sin(psi);
-        double c = cos(psi);
-        
-        double Adist_val = 0.0;
-        double root_arg = a*a - r*r*s*s;
-        
-        if (root_arg >= 0) {
-            double root = sqrt(root_arg);
-            if (fabs(root) > 1e-30 && fabs(l_abs) > 1e-30) {
-                  double ch = cosh(root/l_abs);
-                  Adist_val = 2.0/l_abs * exp(-r*c/l_abs) * ch * a / root;
-            }
+      SetA(a);
+      SetPsi(psi);
+      double r = GetD1();
+      double l_abs = GetLabs();
+      double s = sin(psi);
+      double c = cos(psi);
+      
+      double Adist_val = 0.0;
+      double root_arg = a*a - r*r*s*s;
+      
+      if (root_arg >= 0) {
+        double root = sqrt(root_arg);
+        if (root < 1e-5) { // 閾値を現実的な値に広げる
+          return 0.0;
         }
-        double weight = (psi > 0.0) ? dPsi : 0.0;
-        sum_Adist += Adist_val * weight;
-        sum_weight += weight;
-        psi += dPsi;
+          double ch = cosh(root/l_abs);
+          Adist_val = 2.0/l_abs * exp(-r*c/l_abs) * ch * a / root;
+      }
+      
+      double weight = (psi > 0.0) ? dPsi : 0.0;
+      sum_Adist += Adist_val * weight;
+      sum_weight += weight;
+      psi += dPsi;
     }
     return (sum_weight > 0) ? (sum_Adist / sum_weight) : 0.0;
   }
@@ -303,12 +296,7 @@ public:
     _d1 = d1;
     _L = L;
     _Latt = Latt;
-    _Labs = Labs;
-    _w1 = gsl_integration_workspace_alloc(1000);
-    _w2 = gsl_integration_workspace_alloc(1000);
-    _w3 = gsl_integration_workspace_alloc(1000);
-    _w4 = gsl_integration_workspace_alloc(1000);   
-    _w5 = gsl_integration_workspace_alloc(5000);          
+    _Labs = Labs;       
   }
   /*!
    * Constructor for a fiber
@@ -328,19 +316,7 @@ public:
     _L = L;
     _Latt = Latt;
     _Labs = Labs;
-    _w1 = gsl_integration_workspace_alloc(1000);
-    _w2 = gsl_integration_workspace_alloc(1000);
-    _w3 = gsl_integration_workspace_alloc(1000);
-    _w4 = gsl_integration_workspace_alloc(1000);  
-    _w5 = gsl_integration_workspace_alloc(5000);  
   }  
-  ~Fiber() {
-    gsl_integration_workspace_free(_w5);
-    gsl_integration_workspace_free(_w4);        
-    gsl_integration_workspace_free(_w3);    
-    gsl_integration_workspace_free(_w2);
-    gsl_integration_workspace_free(_w1);    
-  }
   /*! Returns the refactive index of the fiber core */
   double GetN0() const { return _n0; }
   /*! Returns the refactive index of the inner cladding */  
@@ -369,8 +345,6 @@ public:
   void SetA(double a) { _a = a; }
   double GetZ() const { return _z; }
   void SetZ(double z) { _z = z; }
-  gsl_integration_workspace* GetW1() { return _w1; }
-  gsl_integration_workspace* GetW2() { return _w2; }
   double GetP() const { return _P; }
   double GetPerr() const { return _Perr; }  
   double GetPatt() const { return _Patt; }
@@ -406,7 +380,9 @@ public:
     F.function = f_integral_solidangle;
     F.params = this;
     double result, err;
-    gsl_integration_qag(&F, 0, 2.0*M_PI, 0, 1e-5, 1000, GSL_INTEG_GAUSS31, _w1, &result, &err);
+    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
+    gsl_integration_qag(&F, 0, 2.0*M_PI, 0, 1e-5, 1000, GSL_INTEG_GAUSS31, local_w, &result, &err);
+    gsl_integration_workspace_free(local_w);
     _result = 0.5 - result/4/M_PI;
     _err = err/4/M_PI;  
     return 0.5 - result/4/M_PI;  
@@ -419,7 +395,9 @@ public:
     F.function = f_integral_average_over_a;
     F.params = this;
     double result, err;
-    gsl_integration_qag(&F, 0, _d1, 0, 1e-5, 1000, GSL_INTEG_GAUSS41, _w2, &result, &err);
+    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
+    gsl_integration_qag(&F, 0, _d1, 0, 1e-5, 1000, GSL_INTEG_GAUSS41, local_w, &result, &err);
+    gsl_integration_workspace_free(local_w);
     _P = 2.0*result/_d1/_d1;
     _Perr = 2.0*err/_d1/_d1;
     return 2.0*result/_d1/_d1;
@@ -438,7 +416,9 @@ public:
     F.function = f_integral_phi_att;
     F.params = this;
     double result, err;
-    gsl_integration_qag(&F, 0, 2.0*M_PI, 0, 1e-3, 1000, GSL_INTEG_GAUSS31, _w2, &result, &err);
+    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
+    gsl_integration_qag(&F, 0, 2.0*M_PI, 0, 1e-3, 1000, GSL_INTEG_GAUSS31, local_w, &result, &err);
+    gsl_integration_workspace_free(local_w);
     _result = result/4/M_PI;
     _err = err/4/M_PI;  
     return result/4/M_PI;  
@@ -454,7 +434,9 @@ public:
     F.function = f_integral_average_over_z;
     F.params = this;
     double result, err;
-    gsl_integration_qag(&F, 0, _L, 0, 1e-3, 1000, GSL_INTEG_GAUSS31, _w3, &result, &err);
+    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
+    gsl_integration_qag(&F, 0, _L, 0, 1e-3, 1000, GSL_INTEG_GAUSS31, local_w, &result, &err);
+    gsl_integration_workspace_free(local_w);
     _result = result/_L;
     _err = err/_L;
     return result/_L;
@@ -466,7 +448,9 @@ public:
     F.function = f_integral_average_over_za;
     F.params = this;
     double result, err;
-    gsl_integration_qag(&F, 0, _d1, 0, 1e-3, 1000, GSL_INTEG_GAUSS31, _w4, &result, &err);
+    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
+    gsl_integration_qag(&F, 0, _d1, 0, 1e-3, 1000, GSL_INTEG_GAUSS31, local_w, &result, &err);
+    gsl_integration_workspace_free(local_w);
     _Patt = 2*result/_d1/_d1;
     _Patterr = 2*err/_d1/_d1;
     return 2*result/_d1/_d1;
@@ -523,7 +507,9 @@ public:
     F.params = this;
     SetTheta(theta);
     double result, err;
-    gsl_integration_qag(&F, 0, _d1, 0, 1e-3, 5000, GSL_INTEG_GAUSS41, _w5, &result, &err);
+    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(5000);
+    gsl_integration_qag(&F, 0, _d1, 0, 1e-3, 5000, GSL_INTEG_GAUSS41, local_w, &result, &err);
+    gsl_integration_workspace_free(local_w); 
     double c = cos(theta);
     double s = sin(theta);
     double att = 1.0 - exp(-_L/c/_Latt);
@@ -618,7 +604,9 @@ public:
     F.params = this;
     SetTheta(theta);
     double result, err;
-    gsl_integration_qag(&F, 0, _d1, 0, 1e-5, 1000, GSL_INTEG_GAUSS41, _w2, &result, &err);
+    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
+    gsl_integration_qag(&F, 0, _d1, 0, 1e-5, 1000, GSL_INTEG_GAUSS41, local_w, &result, &err);
+    gsl_integration_workspace_free(local_w);
     double c = cos(theta);
     double s = sin(theta);
     double att = c*_Latt - exp(-_L/c/_Latt)*(c*_Latt + _L);
@@ -799,7 +787,7 @@ public:
     int numSteps = 0;
     for(double z = 0.0; z < GetL(); z += zStep) numSteps++;
     
-    std::vector<DataPoint> results(numSteps);
+    vector<DataPoint> results(numSteps);
     double dTheta = thetaStep * M_PI / 180.0;
 
     PrepareTable(); // Ensure the table is loaded before parallel region
@@ -809,39 +797,39 @@ public:
     // OpenMP Parallel Loop
     #pragma omp parallel for schedule(dynamic)
     for (int i = 0; i < numSteps; i++) {
-        double z = i * zStep;
-        
-        // COPY the fiber object for this thread to ensure thread-safety
-        Fiber localFiber = *this; 
+      double z = i * zStep;
+      
+      // COPY the fiber object for this thread to ensure thread-safety
+      Fiber localFiber = *this; 
 
-        double sum_P = 0.0;
-        double sum_weight = 0.0;
-        double theta = 0.0;
-        double t_final = 0.0;
+      double sum_P = 0.0;
+      double sum_weight = 0.0;
+      double theta = 0.0;
+      double t_final = 0.0;
 
-        while(theta < M_PI/2){
-          // Use localFiber for calculations
-          double P = localFiber.dPdt_a(z, theta);
-          double t = localFiber.Trapping_time(theta, z);
-          
-          double weight;
-          if (theta > 0.0) {weight = sin(theta) * dTheta;}
-          else { weight = 0.0;};
-          
-          double P_weight = P * weight ;
-          sum_P += P_weight;
-          sum_weight += weight;
-          
-          theta += dTheta;
-          t_final = t; // Store t (as in original code logic, though implies averaging might be better)
-        }
-        // Normalize
-        double avg_P = (sum_weight > 0) ? (sum_P / sum_weight / localFiber.GetL()) : 0.0;
+      while(theta < M_PI/2){
+        // Use localFiber for calculations
+        double P = localFiber.dPdt_a(z, theta);
+        double t = localFiber.Trapping_time(theta, z);
         
-        // Store result
-        results[i].z = z;
-        results[i].t = t_final;
-        results[i].dPdt = avg_P;
+        double weight;
+        if (theta > 0.0) {weight = sin(theta) * dTheta;}
+        else { weight = 0.0;};
+        
+        double P_weight = P * weight ;
+        sum_P += P_weight;
+        sum_weight += weight;
+        
+        theta += dTheta;
+        t_final = t; // Store t (as in original code logic, though implies averaging might be better)
+      }
+      // Normalize
+      double avg_P = (sum_weight > 0) ? (sum_P / sum_weight / localFiber.GetL()) : 0.0;
+      
+      // Store result
+      results[i].z = z;
+      results[i].t = t_final;
+      results[i].dPdt = avg_P;
     }
 
     // Sequential File Writing
@@ -968,7 +956,9 @@ public:
     double result, err;
     double epsabs = 1e-10; // 絶対誤差の許容値
     double epsrel = 1e-5;  // 相対誤差の許容値
-    gsl_integration_qag(&F, 0, _d1, epsabs, epsrel, 5000, GSL_INTEG_GAUSS41, _w5, &result, &err);
+    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(5000);
+    gsl_integration_qag(&F, 0, _d1, epsabs, epsrel, 5000, GSL_INTEG_GAUSS41, local_w, &result, &err);
+    gsl_integration_workspace_free(local_w);
     double c = cos(theta);
     double s = sin(theta);
     double att = 1.0 - exp(-_L/c/_Latt);

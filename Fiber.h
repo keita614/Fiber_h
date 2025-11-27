@@ -31,6 +31,9 @@
 #include <algorithm>
 #include <fstream>
 #include <iostream>
+#include <sstream>
+#include <omp.h>
+#include <gsl/gsl_errno.h>
 #include "gsl/gsl_integration.h"
 #include "gsl/gsl_deriv.h"
 
@@ -217,7 +220,7 @@ private:
 
       double a = 0.0;
       double limit = GetD1();
-      double step = 0.005; // 精度が必要なら細かくする
+      double step = 0.00001; // 精度が必要なら細かくする
 
       while (a < limit) {
           double val = Calculate_Raw_Adist(a); // 重い計算を実行
@@ -507,8 +510,10 @@ public:
     F.params = this;
     SetA(a);
     SetTheta(theta);
-    double result, err;    
-    gsl_integration_qag(&F, 0, 2*M_PI, 0, 1e-6, 1000, GSL_INTEG_GAUSS41, _w1, &result, &err);
+    double result, err;
+    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);    
+    gsl_integration_qag(&F, 0, 2*M_PI, 0, 1e-6, 1000, GSL_INTEG_GAUSS41, local_w, &result, &err);
+    gsl_integration_workspace_free(local_w);
     return result/2/M_PI;
   }
   //常定pdfの(22)式の計算結果をファイバーの断面積で平均化する計算
@@ -646,7 +651,14 @@ public:
     double result, err;
     double pts[2] = {0.0, _d1};
     size_t npts = 2;
-    gsl_integration_qagp(&F, pts, npts, 0, 1e-3, 5000, _w5, &result, &err);
+    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(5000);
+    int status = gsl_integration_qagp(&F, pts, npts, 0, 1e-3, 5000, local_w, &result, &err);
+    gsl_integration_workspace_free(local_w);
+    if (status != GSL_SUCCESS) {
+        // エラーなら0を返すか、ログを出すなどの処理
+        printf("Warning: Integration did not converge in dPdt_a(z=%f, theta=%f)\n", z, theta);
+        return 0.0; 
+    }
     return 2.0*result/_d1/_d1;
   }
 
@@ -775,45 +787,71 @@ public:
   }
 
   // Absorption Length の効果を考慮に入れ、aで平均化したもの
-  void Calc_dPdt_a_with_a_dist(const char *fileName, double thetaStep = 10, double zStep = 20){
-    FILE *fp = fopen(fileName, "w");
-    double theta = 0.0;
-    double dTheta = thetaStep*M_PI/180;
-    double z = 0.0;
-    double dZ = zStep;
-    double weight = 0.0;
-    fprintf(fp, "z t dPdt\n");
+  void Calc_dPdt_a_with_a_dist(const char *fileName, double thetaStep = 1, double zStep = 1){
+    // Structure to hold results to avoid concurrent file writing
+    struct DataPoint {
+      double z;
+      double t;
+      double dPdt;
+    };
+    
+    // Calculate number of steps
+    int numSteps = 0;
+    for(double z = 0.0; z < GetL(); z += zStep) numSteps++;
+    
+    std::vector<DataPoint> results(numSteps);
+    double dTheta = thetaStep * M_PI / 180.0;
 
-    while(z <GetL()){
-      double sum_P = 0.0;
-      double sum_t = 0.0;
-      double sum_weight = 0.0;
-      theta = 0.0;
-      while(theta < M_PI/2){
-        double P = dPdt_a(z, theta);
-        double t = Trapping_time(theta, z);
-        if (theta > 0.0) {weight = sin(theta) * dTheta;}
+    PrepareTable(); // Ensure the table is loaded before parallel region
+    
+    printf("Starting parallel calculation with OpenMP...\n");
+
+    // OpenMP Parallel Loop
+    #pragma omp parallel for schedule(dynamic)
+    for (int i = 0; i < numSteps; i++) {
+        double z = i * zStep;
+        
+        // COPY the fiber object for this thread to ensure thread-safety
+        Fiber localFiber = *this; 
+
+        double sum_P = 0.0;
+        double sum_weight = 0.0;
+        double theta = 0.0;
+        double t_final = 0.0;
+
+        while(theta < M_PI/2){
+          // Use localFiber for calculations
+          double P = localFiber.dPdt_a(z, theta);
+          double t = localFiber.Trapping_time(theta, z);
+          
+          double weight;
+          if (theta > 0.0) {weight = sin(theta) * dTheta;}
           else { weight = 0.0;};
-        double P_weight = P * weight ;
-        double t_weight = t * weight;
-        sum_P += P_weight;
-        sum_t += t_weight;
-        sum_weight += weight;
+          
+          double P_weight = P * weight ;
+          sum_P += P_weight;
+          sum_weight += weight;
+          
+          theta += dTheta;
+          t_final = t; // Store t (as in original code logic, though implies averaging might be better)
+        }
+        // Normalize
+        double avg_P = (sum_weight > 0) ? (sum_P / sum_weight / localFiber.GetL()) : 0.0;
+        
+        // Store result
+        results[i].z = z;
+        results[i].t = t_final;
+        results[i].dPdt = avg_P;
+    }
 
-        printf("Calculating... Finished theta = %f \n",theta);
-        fflush(stdout);
-        theta += dTheta;
-      }
-      double avg_P = (sum_weight > 0) ? (sum_P / sum_weight) : 0.0;
-      double avg_t = (sum_weight > 0) ? (sum_t / sum_weight) : 0.0;
-      fprintf(fp, "%f %f %e\n", z, avg_t, avg_P);
-
-      printf("Calculating... Finished z = %f mm / %f mm\n", z, GetL());
-      fflush(stdout);
-
-      z += dZ;
+    // Sequential File Writing
+    FILE *fp = fopen(fileName, "w");
+    fprintf(fp, "z t dPdt\n");
+    for(const auto& pt : results) {
+        fprintf(fp, "%f %f %e\n", pt.z, pt.t, pt.dPdt);
     }
     fclose(fp);
+    printf("Calculation finished and saved to %s\n", fileName);
   }
 
   // zは固定し、Absorption Length の効果を考慮に入れ、aで平均化したもの
@@ -904,7 +942,7 @@ public:
     double a = 0.0; 
     double dA = aStep;
     while(a < GetD1()){
-      double Adist = a_initial(a, psi);
+      double Adist = Calculate_Raw_Adist(a, psi);
       fprintf(fp, "%f %f\n", a, Adist);
       printf("Finished a %f mm\n", a);
       a += dA;

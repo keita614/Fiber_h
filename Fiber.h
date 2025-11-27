@@ -27,6 +27,10 @@
 #include <math.h>
 #include <unistd.h>
 #include <vector>
+#include <sys/stat.h>
+#include <algorithm>
+#include <fstream>
+#include <iostream>
 #include "gsl/gsl_integration.h"
 #include "gsl/gsl_deriv.h"
 
@@ -53,6 +57,11 @@ private:
   double _result, _err;
   double _P, _Perr;
   double _Patt, _Patterr;
+  /*データをメモリに一時保持するための変数*/
+  vector<double> table_a; //aの値
+  vector<double> table_val; //計算された初期位置分布の値
+  bool is_table_loaded = false; //読み込み済みフラグ
+  const string table_filename = "Initial_a_distribution.txt"; //保存ファイル名
   /*! Workspaces for numerical integration */
   gsl_integration_workspace *_w1;
   gsl_integration_workspace *_w2;
@@ -141,6 +150,7 @@ private:
     //    else return sinTheta;
     else return 1.0;
   }
+
   //常定pdfの式(22)の計算結果にaをかけ、断面積での平均化に向けた計算
   static double f_integral_theta_dist_a(double a, void *data) {
     Fiber *fiber = (Fiber *) data;
@@ -156,6 +166,89 @@ private:
     double z = fiber->GetZ();
     double dPdt = fiber->dPdt(theta, a, z)*fiber->Get_a_initial_distribution(a);
     return dPdt;
+  }
+
+  //aの初期位置を決定する分布の平均化
+  double Calculate_Raw_Adist(double a, double psiStep = 1.0) {
+    double psi = 0.0;
+    double dPsi = psiStep * M_PI / 180.0;
+    double sum_Adist = 0.0;
+    double sum_weight = 0.0;
+
+    while (psi < M_PI / 2.0) {
+        SetA(a);
+        SetPsi(psi);
+        double r = GetD1();
+        double l_abs = GetLabs();
+        double s = sin(psi);
+        double c = cos(psi);
+        
+        double Adist_val = 0.0;
+        double root_arg = a*a - r*r*s*s;
+        
+        if (root_arg >= 0) {
+            double root = sqrt(root_arg);
+            if (fabs(root) > 1e-30 && fabs(l_abs) > 1e-30) {
+                  double ch = cosh(root/l_abs);
+                  Adist_val = 2.0/l_abs * exp(-r*c/l_abs) * ch * a / root;
+            }
+        }
+        double weight = (psi > 0.0) ? dPsi : 0.0;
+        sum_Adist += Adist_val * weight;
+        sum_weight += weight;
+        psi += dPsi;
+    }
+    return (sum_weight > 0) ? (sum_Adist / sum_weight) : 0.0;
+  }
+
+  // Initial_a_distribution.txtの準備
+  void PrepareTable() {
+    if (is_table_loaded) return;
+
+    // ファイル存在確認
+    struct stat buffer;
+    bool file_exists = (stat(table_filename.c_str(), &buffer) == 0); //stat()でファイルの存在を確認 → .c_str()でstring 文字列を、C言語形式の文字列（char*）に変換
+
+    // ファイルがない場合のみ作成 (重い処理はここだけ)
+    if (!file_exists) {
+      cout << "Generating table file: " << table_filename << " ..." << endl; //printfみたいなもん。左から順番に出力され、endlで改行
+      ofstream outfile(table_filename);
+      outfile << "# a  Initial_a_distribution_Mean" << endl;
+
+      double a = 0.0;
+      double limit = GetD1();
+      double step = 0.005; // 精度が必要なら細かくする
+
+      while (a < limit) {
+          double val = Calculate_Raw_Adist(a); // 重い計算を実行
+          outfile << a << " " << val << endl;
+          a += step;
+      }
+      outfile.close();
+      cout << "Generation completed." << endl;
+    }
+
+    // ファイル読み込み (メモリへの展開)
+    ifstream infile(table_filename);
+    if (!infile) {
+      cerr << "Error: Cannot open table file." << endl;
+      return;
+    }
+
+    double t_a, t_val;
+    string line;
+    table_a.clear();
+    table_val.clear();
+
+    while (getline(infile, line)) { //ファイルから「1行まるごと」文字列として読み込み
+      if (line.empty() || line[0] == '#') continue;
+      stringstream ss(line); //読み込んだファイルを文字列ストリームに変換
+      if (ss >> t_a >> t_val) {
+        table_a.push_back(t_a);
+        table_val.push_back(t_val);
+      }
+    }
+    is_table_loaded = true;
   }
 
   static double f_integral_escape_dist(double a, void *data){
@@ -779,49 +872,30 @@ public:
     // ファイバーのabsorptionの効果を計算する
   /* @param psi Azimuthal angle with respect to the cross-section of the fiber*/
     //aの初期位置を決定する分布関数
-  double a_initial(double a, double psi){
-    SetA(a);
-    SetPsi(psi);
-    double r = GetD1();
-    double l_abs = GetLabs();
-    double s = sin(psi);
-    double c = cos(psi);
-    double root_arg = a*a - r*r*s*s;
-    if (root_arg < 0) {
-        return 0.0;
+  double Get_a_initial_distribution(double a) {
+    // まだ読み込んでいなければ読み込む (Lazy Loading)
+    if (!is_table_loaded) {
+      PrepareTable();
     }
-    double root = sqrt(root_arg);
-    if (fabs(root) < 1e-30 || fabs(l_abs) < 1e-30) {
-        return 0.0;
-    }
-    double ch = cosh(root/l_abs);
-    double sh = sinh(r*c/l_abs);
-    if (fabs(sh) < 1e-30) {
-        return 0.0;
-    }
-    double Adist = 2/l_abs*exp(-r*c/l_abs)*ch*a/root;
-    return Adist;
-  }
 
-  //aの初期位置を決定する分布の平均化
-  double Get_a_initial_distribution(double a, double psiStep = 1){
-    double psi = 0.0;
-    double dPsi = psiStep*M_PI/180;
-    double weight = 0.0;
-    double sum_Adist = 0.0;
-    double sum_weight = 0.0;
-    while(psi < M_PI/2){
-      double Adist = a_initial(a, psi);
-      if (psi> 0.0) {weight = dPsi;}
-      else { weight = 0.0;};
-      double Adist_weight = Adist*weight;
-      sum_Adist += Adist_weight;
-      sum_weight += weight;
+    // 範囲外チェック
+    if (table_a.empty()) return 0.0;
+    if (a <= table_a.front()) return table_val.front();
+    if (a >= table_a.back()) return 0.0; // 範囲外は0とする場合
 
-      psi += dPsi; 
-    }
-    double avg_Adist = (sum_weight > 0) ? (sum_Adist / sum_weight) : 0.0;
-    return avg_Adist;
+    // --- 二分探索と線形補間 (高速) ---
+    // a 以上の最初のイテレータを見つける
+    auto it = lower_bound(table_a.begin(), table_a.end(), a);
+    
+    size_t idx = distance(table_a.begin(), it);
+    
+    double x1 = table_a[idx - 1];
+    double x2 = table_a[idx];
+    double y1 = table_val[idx - 1];
+    double y2 = table_val[idx];
+
+    // 線形補間: y = y1 + (x - x1) * (y2 - y1) / (x2 - x1)
+    return y1 + (a - x1) * (y2 - y1) / (x2 - x1);
   }
 
   void Check_a_dist(const char *fileName, double psiStep = 1, double aStep = 0.005){

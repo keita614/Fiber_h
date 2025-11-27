@@ -1,0 +1,900 @@
+#ifndef ___FIBER_H___
+#define ___FIBER_H___
+
+/*!
+ * This class describes an optical fiber and is used to calculate the trapping
+ * efficiency for photons uniformly and isotropically emitted in the fiber.
+ *
+ * December 2024
+ * T. Kobayashi, I. Komae, and Y. Tsunesada
+ * Osaka Metropolitan University
+ */
+
+ /*!
+ * 常定さんよりこのコードを受け取り、Geant4シミュレーションの結果をC++で解析するためのクラスとして改修せよ
+ * との通達を受けたため、以降その改修に取り組んでいる。日本語のメモは全て私が取ったものである。
+ * 2025年10月
+ * 湯淺　圭太
+ * 
+ * 以下コメント　11/26追記
+ * 全てのTrapping Efficiencyの計算においてattenuation lengthとabsorption lengthの両方を考慮し、
+ * それが標準装備になるように改修したい。
+ * また、absorption lengthの効果は計算が非常に重いため、一度テキストファイルで出力させ、それがある場合はそこから読み取るという形を取ることで計算を高速化したい。
+ */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
+#include <unistd.h>
+#include <vector>
+#include "gsl/gsl_integration.h"
+#include "gsl/gsl_deriv.h"
+
+using namespace std;
+
+class Fiber {
+private:
+  /*! Fiber attributes */
+  double _n0; /*!< Refractive index of the fiber core */
+  double _n1; /*!< Refractive index of the inner cladding */
+  double _n2; /*!< Refractive index of the outer cladding */
+  double _d1; /*!< Radius of the fiber core in [mm] */
+  double _d2; /*!< Outer radius of the inner cladding in [mm] */
+  double _L;  /*!< Fiber length in [mm] */
+  double _Latt; /*!< Fiber attenuation length in [mm] */
+  double _Labs; /*!< Fiber absorption length in [mm] */
+  /*! Temporal variables */
+  double _mu;   /*!< Cosine(Theta) */
+  double _theta;
+  double _phi;  /*!< Azimuthal angle in radians */
+  double _psi;  /*!< Azimuthal angle with respect to the cross-section of the fiber*/
+  double _a;    /*!< Distance from the fiber axis in [mm] */
+  double _z;    /*!< Distance from an edge of the fiber along the axis in [mm] */
+  double _result, _err;
+  double _P, _Perr;
+  double _Patt, _Patterr;
+  /*! Workspaces for numerical integration */
+  gsl_integration_workspace *_w1;
+  gsl_integration_workspace *_w2;
+  gsl_integration_workspace *_w3;
+  gsl_integration_workspace *_w4;  
+  gsl_integration_workspace *_w5;  
+  /**
+   * Function that describes the integrand of equation (9)
+   * The cosThetaMax is calculated by (10).
+   * This is a function of azimuthal angle phi, and takes four parameters:
+   *    n0: Refractive index of the fiber core
+   *    n1: Refractive index of the inner cladding
+   *    d: The radius of the fiber core
+   *    a: The off-axis distance of the photon emission point
+   */
+  //2 Trapping efficiency of a fiber as a function of off-axis distant a
+  //常定odfの(10)式の計算結果
+  static double f_integral_solidangle(double phi, void *data) {
+    Fiber *fiber = (Fiber *) data;
+    double a = fiber->GetA();  
+    return fiber->Calc_cosThetaMax(phi, a);
+  }
+  // Integrand for (11) , 常定pdfの(9)式の計算結果にaをかけ、断面積での平均化に向けた計算
+  static double f_integral_average_over_a(double a, void *data) {
+    Fiber *fiber = (Fiber *) data;
+    double Pa = fiber->Calc_Pa(a);
+    return a*Pa;
+  }
+
+  //3 Trapping efficiency of a fiber of given length の計算
+  // For internal use by f_integral_phi_att() , 常定pdfの(19)式の被積分項
+  static double f_integral_mu_att(double mu, void *data) {
+    Fiber *fiber = (Fiber *) data;
+    double L = fiber->GetL();
+    double Latt = fiber->GetLatt();  
+    double z = fiber->GetZ();
+    if (fabs(mu) < 1e-6) return 0;
+    return exp(-(L-z)/mu/Latt);
+  }
+  // Integrand for (16) , 常定pdfの(19)式のμ積分
+  static double f_integral_phi_att(double phi, void *data) {
+    Fiber *fiber = (Fiber *) data;
+    gsl_function F;
+    F.function = f_integral_mu_att;
+    F.params = data;
+    double a = fiber->GetA();
+    double mumin = fiber->Calc_cosThetaMax(phi, a);
+    double result, err;
+    gsl_integration_qag(&F, mumin, 1, 0, 1e-6, 1000, GSL_INTEG_GAUSS31, fiber->GetW1(), &result, &err);
+    return result;
+  }
+  
+  // Integrand for (17) , 常定pdfの(19)式の積分結果
+  static double f_integral_average_over_z(double z, void *data) {
+    Fiber *fiber = (Fiber *) data;
+    double a = fiber->GetA();
+    double Paz = fiber->Calc_Paz(a, z);
+    return Paz;
+  }
+  
+  // Integrand for (18) , 常定pdfの(20)式の積分結果にaをかけ、断面積での平均化に向けた計算
+  static double f_integral_average_over_za(double a, void *data) {
+    Fiber *fiber = (Fiber *) data;
+    double Pa = fiber->Calc_Pa_average_over_z(a);
+    return a*Pa;
+  }
+
+  //4.1 Angular Distribution
+  //光子が全反射できるかどうかのチェック。できるなら１を返している
+  static double f_integral_theta_dist(double phi, void *data) {
+    Fiber *fiber = (Fiber *) data;
+    double sinTheta = sin(fiber->GetTheta());
+    double sinPhi = sin(phi);
+    double a = fiber->GetA();
+    double d = fiber->GetD1();
+    double cosPsi = sinTheta*sqrt(1.0 - a*a/d/d*sinPhi*sinPhi); //常定pdfの(7)式の計算
+    double sinPsi = sqrt(1.0 - cosPsi*cosPsi); //前式よりsinPsiを計算
+    double nn;
+    //常定pdfの(16)式の計算を場合分けで行なっている
+    if (fiber->GetN2() < 0) { // single cladding
+      nn = fiber->GetN1()/fiber->GetN0();
+    } else {
+      nn = fiber->GetN2()/fiber->GetN0(); // double cladding     
+    }
+    if (sinPsi < nn) return 0.0;
+    //    else return sinTheta;
+    else return 1.0;
+  }
+  //常定pdfの式(22)の計算結果にaをかけ、断面積での平均化に向けた計算
+  static double f_integral_theta_dist_a(double a, void *data) {
+    Fiber *fiber = (Fiber *) data;
+    double theta = fiber->GetTheta();
+    double dPdTheta = fiber->dPdTheta(a, theta) * fiber->Get_a_initial_distribution(a);
+    return dPdTheta;
+  }
+
+  //4.3 Path length and propagation time distributions
+  static double f_integral_a_dist(double a, void *data){
+    Fiber *fiber = (Fiber *) data;
+    double theta = fiber->GetTheta();
+    double z = fiber->GetZ();
+    double dPdt = fiber->dPdt(theta, a, z)*fiber->Get_a_initial_distribution(a);
+    return dPdt;
+  }
+
+  static double f_integral_escape_dist(double a, void *data){
+    Fiber *fiber = (Fiber *) data;
+    double theta = fiber->GetTheta();
+    double dPdTheta = fiber->dPdTheta(a, theta);
+    double weight = fiber->Escape_angle_distribution(theta, a);
+    return weight*dPdTheta;
+  }
+
+  /*
+   * Komae's (18)
+   */
+  //ファイバーを出ていく光子が中心軸からどれだけ離れているかの計算
+  static double f_aprime(double a, void *data) {
+    Fiber *fiber = (Fiber *) data;
+    double theta = fiber->GetTheta();
+    double phi = fiber->GetPhi();
+    double z = fiber->GetZ();
+    double L = fiber->GetL();
+    double d = fiber->GetD1();
+    double sinphi = sin(phi);
+    double cosphi = cos(phi);
+    double b = sqrt(d*d - a*a*sinphi*sinphi); //光子の反射点から次の反射点までの水平方向の距離の半分
+    double A = (L - z)*tan(theta); //光子の水平方向の総移動距離
+    double ltotal = A + a*cosphi + b; //光子の水平方向の総移動距離
+    double l = 2.0*b;
+    int n = (int) (ltotal/l); //反射回数。少数切り捨て
+    double B = 2.0*n*b; //反射しながら進んだ合計の距離
+    double AB = A - B; //最後の反射が終わった後の、ファイバー終端に達するまでの移動距離
+    double aprime2 = a*a + 2.0*a*cosphi*AB + AB*AB; //ファイバーを出ていく光子が中心軸からどれだけ離れているか
+    return sqrt(aprime2);
+  }
+
+public:
+  /*!
+   * Constructor for a fiber
+   * @param n0 The refractive index of the fiber core
+   * @param n1 The refractive index of the inner cladding
+   * @param d1 The radius of the fiber core in [mm]
+   * @param L The length of the fiber in [mm]
+   * @param Latt The atteunuation length of the fiber in [mm]
+   * @param Labs The absorption length of the fiber in [mm]
+   */
+  Fiber(double n0, double n1, double d1, double L, double Latt, double Labs) {
+    _n0 = n0;
+    _n1 = n1;
+    _n2 = -9.99;
+    _d1 = d1;
+    _L = L;
+    _Latt = Latt;
+    _Labs = Labs;
+    _w1 = gsl_integration_workspace_alloc(1000);
+    _w2 = gsl_integration_workspace_alloc(1000);
+    _w3 = gsl_integration_workspace_alloc(1000);
+    _w4 = gsl_integration_workspace_alloc(1000);   
+    _w5 = gsl_integration_workspace_alloc(5000);          
+  }
+  /*!
+   * Constructor for a fiber
+   * @param n0 The refractive index of the fiber core
+   * @param n1 The refractive index of the inner cladding
+   * @param n2 The refractive index of the outer cladding
+   * @param d1 The radius of the fiber core in [mm]
+   * @param L The length of the fiber in [mm]
+   * @param Latt The atteunuation length of the fiber in [mm]
+   * @param Labs The absorption length of the fiber in[mm]
+   */
+  Fiber(double n0, double n1, double n2, double d1, double L, double Latt, double Labs) {
+    _n0 = n0;
+    _n1 = n1;
+    _n2 = n2;
+    _d1 = d1;
+    _L = L;
+    _Latt = Latt;
+    _Labs = Labs;
+    _w1 = gsl_integration_workspace_alloc(1000);
+    _w2 = gsl_integration_workspace_alloc(1000);
+    _w3 = gsl_integration_workspace_alloc(1000);
+    _w4 = gsl_integration_workspace_alloc(1000);  
+    _w5 = gsl_integration_workspace_alloc(5000);  
+  }  
+  ~Fiber() {
+    gsl_integration_workspace_free(_w5);
+    gsl_integration_workspace_free(_w4);        
+    gsl_integration_workspace_free(_w3);    
+    gsl_integration_workspace_free(_w2);
+    gsl_integration_workspace_free(_w1);    
+  }
+  /*! Returns the refactive index of the fiber core */
+  double GetN0() const { return _n0; }
+  /*! Returns the refactive index of the inner cladding */  
+  double GetN1() const { return _n1; }
+  /*! Returns the refactive index of the outer cladding */  
+  double GetN2() const { return _n2; }
+  /*! Returns the radius of the fiber core in [mm] */
+  double GetD1() const { return _d1; }
+  /*! Returns the outer radius of the inner cladding in [mm] */  
+  double GetD2() const { return _d2; }
+  /*! Returns the fiber length in [mm] */
+  double GetL() const { return _L; }
+  /*! Returns the atteunuation length of the fiber in [mm] */
+  double GetLatt() const { return _Latt; }
+  /*! Returns the absorption length of the fiber in [mm]*/
+  double GetLabs() const { return _Labs; }
+  double GetTheta() const { return _theta; }
+  void SetTheta(double theta) { _theta = theta; }
+  double GetPhi() const { return _phi; }
+  void SetPhi(double phi) { _phi = phi; }
+  double GetPsi() const {return _psi; }
+  void SetPsi(double psi){ _psi = psi;}
+  double GetMu() const { return _mu; }
+  void SetMu(double mu) { _mu = mu; }      
+  double GetA() const { return _a; }
+  void SetA(double a) { _a = a; }
+  double GetZ() const { return _z; }
+  void SetZ(double z) { _z = z; }
+  gsl_integration_workspace* GetW1() { return _w1; }
+  gsl_integration_workspace* GetW2() { return _w2; }
+  double GetP() const { return _P; }
+  double GetPerr() const { return _Perr; }  
+  double GetPatt() const { return _Patt; }
+  double GetPatterr() const { return _Patterr; } 
+  double GetLightSpeed() const { return 299.792458; } //光速 [mm/ns] 
+  /*!
+   * Calculate the boundary of theta using equation (10).
+   * @param phi Azimuthal angle of photon direction in [rad]
+   * @param a The off-axis distance at the photon emission point in [mm]
+   */
+  // 常定pdfの(10)式の計算本体
+  double Calc_cosThetaMax(double phi, double a) {
+    double sinphi = sin(phi);
+    double sin2thetamax;    
+    if (_n2 < 0) { // single cladding
+      sin2thetamax = (1.0 - _n1*_n1/_n0/_n0)/(1 - a*a*sinphi*sinphi/_d1/_d1);
+    } else {   // double cladding
+      sin2thetamax = (1.0 - _n2*_n2/_n0/_n0)/(1 - a*a*sinphi*sinphi/_d1/_d1);
+    }
+    if (sin2thetamax > 1.0) return 0.0;
+    double costhetamax = sqrt(1.0 - sin2thetamax);
+    return costhetamax;
+  }
+  
+  /*!
+   * Calculate the trapping efficiency P(a) for a given "a" using the equation (9).
+   * @param a The off-axis distance at the photon emission point in [mm]
+   */
+  //常定pdfの(9)式の積分本体
+  double Calc_Pa(double a) {
+    gsl_function F;
+    SetA(a);
+    F.function = f_integral_solidangle;
+    F.params = this;
+    double result, err;
+    gsl_integration_qag(&F, 0, 2.0*M_PI, 0, 1e-5, 1000, GSL_INTEG_GAUSS31, _w1, &result, &err);
+    _result = 0.5 - result/4/M_PI;
+    _err = err/4/M_PI;  
+    return 0.5 - result/4/M_PI;  
+  }
+
+  /*! Calculate the average trapping efficiency <P> over "a" using the equation (11) */  
+  //上記の通り、常定pdfの(11)式の積分本体
+  double Calc_P_average_over_a() {
+    gsl_function F;
+    F.function = f_integral_average_over_a;
+    F.params = this;
+    double result, err;
+    gsl_integration_qag(&F, 0, _d1, 0, 1e-5, 1000, GSL_INTEG_GAUSS41, _w2, &result, &err);
+    _P = 2.0*result/_d1/_d1;
+    _Perr = 2.0*err/_d1/_d1;
+    return 2.0*result/_d1/_d1;
+  }
+  /*!
+   * Calculate the trapping efficiency P(a, z) using the equation (18).
+   * Convergence is most severe.
+   * @param a The off-axis distance at the photon emission point in [mm]
+   * @param z The distance from the edge of the fiber along the axis in [mm]
+   */
+  //常定pdfの(19)式の積分本体
+  double Calc_Paz(double a, double z) {
+    gsl_function F;
+    SetA(a);
+    SetZ(z);  
+    F.function = f_integral_phi_att;
+    F.params = this;
+    double result, err;
+    gsl_integration_qag(&F, 0, 2.0*M_PI, 0, 1e-3, 1000, GSL_INTEG_GAUSS31, _w2, &result, &err);
+    _result = result/4/M_PI;
+    _err = err/4/M_PI;  
+    return result/4/M_PI;  
+  }
+  /*!
+   * Calculate Patt(a) at a given "a" by equation (19).
+   * @param a The off-axis distance at the photon emission point in [mm]
+   */
+  //常定pdfの(20)式の計算本体
+  double Calc_Pa_average_over_z(double a) {
+    SetA(a);
+    gsl_function F;
+    F.function = f_integral_average_over_z;
+    F.params = this;
+    double result, err;
+    gsl_integration_qag(&F, 0, _L, 0, 1e-3, 1000, GSL_INTEG_GAUSS31, _w3, &result, &err);
+    _result = result/_L;
+    _err = err/_L;
+    return result/_L;
+  }
+  /*! Calculate the average trapping efficiency <Patt> over z and a, using equation (20). */
+  //常定pdfの(21)式の積分の計算本体
+  double Calc_P_average_over_za() {
+    gsl_function F;
+    F.function = f_integral_average_over_za;
+    F.params = this;
+    double result, err;
+    gsl_integration_qag(&F, 0, _d1, 0, 1e-3, 1000, GSL_INTEG_GAUSS31, _w4, &result, &err);
+    _Patt = 2*result/_d1/_d1;
+    _Patterr = 2*err/_d1/_d1;
+    return 2*result/_d1/_d1;
+  }
+
+  /*!
+   * Calculate P(a) and Patt(a) in the a range [0:d1] using (9) and (19) with a given step.
+   * The results are written in a text file.
+   */
+  //Trapping efficiency P(a)とPatt(a)を(9)式と(19)式で計算し、テキストファイルに出力する
+  void Calc_Pa_Patta(const char *fileName, double astep = 0.005) {
+    FILE *fp = fopen(fileName, "w");
+    Calc_P_average_over_a();
+    Calc_P_average_over_za();
+    fprintf(fp, "# a P(a) Patt(a)\n");
+    fprintf(fp, "# n0 = %3.2f, n1 = %3.2f, n2 = %3.2f\n", _n0, _n1, _n2);
+    fprintf(fp, "# d = %f mm, L = %f mm, Latt = %f mm\n", _d1, _L, _Latt);
+    fprintf(fp, "# P = %e +/- %e, Patt = %e */- %e\n", _P, _Perr, _Patt, _Patterr);
+    fprintf(fp, "%e  %e\n", _P, _Patt);
+    printf("P = %e +/- %e, Patt = %e +/- %e\n", _P, _Perr, _Patt, _Patterr);
+
+    double a = 0.0;
+    while (a < _d1) {      
+      double Paresult = Calc_Pa(a);;      
+      double Pattaresult = Calc_Pa_average_over_z(a);
+      fprintf(fp, "%e %e %e\n", a, Paresult, Pattaresult);
+      a += 0.005;
+    }
+    a = _d1;    
+    double Paresult = Calc_Pa(a);    
+    double Pattaresult = Calc_Pa_average_over_z(a);
+    fprintf(fp, "%e %e %e\n", a, Paresult, Pattaresult);    
+    fclose(fp);
+  }
+
+
+  //常定pdfの(22)式の計算の本体, dPdTheta(a, theta)=1/(2π)∫0^(2π) dφ これ大事
+  double dPdTheta(double a, double theta) { 
+    gsl_function F;
+    F.function = f_integral_theta_dist;
+    F.params = this;
+    SetA(a);
+    SetTheta(theta);
+    double result, err;    
+    gsl_integration_qag(&F, 0, 2*M_PI, 0, 1e-6, 1000, GSL_INTEG_GAUSS41, _w1, &result, &err);
+    return result/2/M_PI;
+  }
+  //常定pdfの(22)式の計算結果をファイバーの断面積で平均化する計算
+  double dPdTheta(double theta) {
+    gsl_function F;
+    F.function = f_integral_theta_dist_a;
+    F.params = this;
+    SetTheta(theta);
+    double result, err;
+    gsl_integration_qag(&F, 0, _d1, 0, 1e-3, 5000, GSL_INTEG_GAUSS41, _w5, &result, &err);
+    double c = cos(theta);
+    double s = sin(theta);
+    double att = 1.0 - exp(-_L/c/_Latt);
+    return 2.0*result/_d1/_d1*s*c*_Latt*att/_L;
+  }
+
+  void Calc_dPdTheta(const char *fileName, double thetaStep = 1.0) {
+
+    double theta = 0.0;
+    double dTheta = thetaStep*M_PI/180;
+    vector<double> v;
+    double sum = 0.0;
+    while (theta < M_PI/2) {
+      double P = dPdTheta(theta);
+      v.push_back(P);      
+      sum += P*dTheta;
+      theta += dTheta;
+    }    
+    FILE *fp = fopen(fileName, "w");
+    fprintf(fp, "theta dPdTheta\n");
+    theta = 0.0;
+    for (size_t i = 0; i < v.size(); i++) {
+      fprintf(fp, "%f %f\n", theta*180/M_PI, v[i]/sum);
+      theta += dTheta;
+    }
+    fclose(fp);
+  }
+
+  void Calc_dPdTheta_secondtheta(const char *fileName, double SecthetaStep = 0.01) {
+    double SecTheta = 1;
+    double dSecTheta = SecthetaStep;
+    double c = 1/SecTheta;
+    double s = sqrt(1-c*c);
+    double theta = acos(c);
+    vector<double> v;
+    double sum = 0.0;
+    double P = 0.0;
+    while (SecTheta < 10) {
+      s = sqrt(1-c*c);
+      c = 1/SecTheta;
+      theta = acos(c);
+      if (s > 1e-9) { // 0.0 と厳密に比較する代わりに、非常に小さい数より大きいかを見る
+      P = c*c*dPdTheta(theta);}
+      v.push_back(P);      
+      sum += P*dSecTheta;
+      SecTheta += dSecTheta;
+    }    
+    FILE *fp = fopen(fileName, "w");
+    SecTheta = 1;
+    for (size_t i = 0; i < v.size(); i++) {
+      double x_val = SecTheta; 
+      double y_val = 0.0; // デフォルトは0
+      if (fabs(sum) > 1e-9) { // sumが0(またはほぼ0)でないことを確認
+          y_val = v[i] / sum;
+      }
+      fprintf(fp, "%f %f\n", x_val, y_val);
+      SecTheta += dSecTheta;
+    }
+    fclose(fp);
+  }
+
+  double dPda(double a) {
+    return 2.0*M_PI*a*Calc_Pa_average_over_z(a);
+  }
+
+  void Calc_dPda(const char *fileName, double aStep = 0.01) {
+
+    double a = 0;
+    vector<double> v;
+    double sum = 0.0;
+    while (a <= _d1) {
+      double p = dPda(a);
+      v.push_back(p);
+      sum += p*aStep;
+      a += aStep;
+    }
+    FILE *fp = fopen(fileName, "w");
+    fprintf(fp, "a dPda\n");
+    a = 0;
+    for (size_t i = 0; i < v.size(); i++) {
+      fprintf(fp, "%f %f\n", a, v[i]/sum);
+      a += aStep;
+    }
+    fclose(fp);
+  }
+
+  //4.2 Path length and propagation time distributions
+  //常定pdfの式(27)の計算結果
+  double dPdl(double theta) {
+    gsl_function F;
+    F.function = f_integral_theta_dist_a;
+    F.params = this;
+    SetTheta(theta);
+    double result, err;
+    gsl_integration_qag(&F, 0, _d1, 0, 1e-5, 1000, GSL_INTEG_GAUSS41, _w2, &result, &err);
+    double c = cos(theta);
+    double s = sin(theta);
+    double att = c*_Latt - exp(-_L/c/_Latt)*(c*_Latt + _L);
+    return 2.0*result/_d1/_d1*s*_Latt*att/_L/c;
+  }
+
+  //以下、dPdtの計算を自身でおこなったものを記述する。
+  //4.3 Propagation time distribution について、平均化ではなく ﬁber の各点で計算することで求める計算方法
+  //式(34)の計算結果
+  double dPdt(double theta, double a, double z){
+    double c = GetLightSpeed(); 
+    double c_core = c/_n0;
+    SetTheta(theta);
+    SetA(a);
+    SetZ(z);
+    double costheta = cos(theta);
+    double L = GetL();
+    double l = L - z;
+    double dPdtheta = dPdTheta(a, theta);
+    return c_core*costheta*costheta/l*dPdtheta;
+  }
+
+  //dPdtのaについて平均化する計算
+  double dPdt_a(double z, double theta){
+    gsl_function F;
+    SetZ(z);
+    SetTheta(theta);
+    F.function = f_integral_a_dist;
+    F.params = this;
+    double result, err;
+    double pts[2] = {0.0, _d1};
+    size_t npts = 2;
+    gsl_integration_qagp(&F, pts, npts, 0, 1e-3, 5000, _w5, &result, &err);
+    return 2.0*result/_d1/_d1;
+  }
+
+  //paperには不記載だが、伝達時間を計算する関数
+  double Trapping_time(double theta, double z){
+    double c = GetLightSpeed(); 
+    double c_core = c/_n0;
+    double costheta = cos(theta);
+    double L = GetL();
+    double l = (L - z)/costheta;
+    return l/c_core;
+  }
+  
+  //式(31)の計算をステップを刻んで出力
+ void Calc_dPdt(const char *fileName, double thetaStep = 10, double aStep = 0.05 , double zStep = 100){
+    FILE *fp = fopen(fileName, "w");
+    double theta = 0.0;
+    double dTheta = thetaStep*M_PI/180;
+    double a = 0.0;
+    double dA = aStep;
+    double z = 0.0;
+    double dZ = zStep;
+    fprintf(fp, "theta a z t P\n");
+    while (theta < M_PI/2) {
+      a = 0.0;
+      while (a < GetD1()) {
+        z = 0.0;
+        while (z < GetL()) {
+          double P = dPdt(theta, a, z);
+          double t = Trapping_time(theta, z);
+          fprintf(fp, "%f %f %f %f %f\n", theta*180/M_PI, a, z, t, P);
+          z += dZ;
+        }
+        a += dA;
+      }
+      theta += dTheta;
+    }
+    fclose(fp);
+  }  
+
+  //式(32)の計算をステップを刻んで出力
+  void Calc_dPdt_average_over_theta(const char *fileName, double thetaStep = 1.0, double aStep = 0.05 , double zStep = 10){
+    FILE *fp = fopen(fileName, "w");
+    double theta = 0.0;
+    double dTheta = thetaStep*M_PI/180;
+    double a = 0.0;
+    double dA = aStep;
+    double z = 0.0;
+    double dZ = zStep;
+    double weight = 0.0;
+    fprintf(fp, "a z t P\n");
+
+    while (z < GetL()) {
+      a = 0.0;
+      while (a < GetD1()) {
+        double sum_P = 0.0;
+        double sum_t = 0.0;
+        double sum_weight = 0.0;
+        theta = 0.0;
+        while (theta < M_PI/2) {
+          double P = dPdt(theta, a, z);
+          double t = Trapping_time(theta, z);
+          if (theta > 0.0) {weight = sin(theta) * dTheta;}
+          else { weight = 0.0;};
+          double P_weight = P * weight;
+          double t_weight = t * weight;
+          sum_P += P_weight;
+          sum_t += t_weight;
+          sum_weight += weight;
+
+          theta += dTheta;
+        }
+        double avg_P = (sum_weight > 0) ? (sum_P / sum_weight) : 0.0;
+        double avg_t = (sum_weight > 0) ? (sum_t / sum_weight) : 0.0;
+        fprintf(fp, "%f %f %f %e\n", a, z, avg_t, avg_P);
+        a += dA;
+      }
+      printf("Finished z = %f mm\n", z);
+      z += dZ;
+    }
+    fclose(fp);
+  }
+
+  // Absorption Length の効果を考慮に入れたもの
+  void Calc_dPdt_with_a_dist(const char *fileName, double thetaStep = 1.0, double aStep = 0.05 , double zStep = 10){
+    FILE *fp = fopen(fileName, "w");
+    double theta = 0.0;
+    double dTheta = thetaStep*M_PI/180;
+    double a = 0.0;
+    double dA = aStep;
+    double z = 0.0;
+    double dZ = zStep;
+    double weight = 0.0;
+    fprintf(fp, "a, z, t, dPdt\n");
+
+    while (z < GetL()) {
+      a = 0.0;
+      while (a < GetD1()) {
+        double sum_P = 0.0;
+        double sum_t = 0.0;
+        double sum_weight = 0.0;
+        double weight_a = Get_a_initial_distribution(a);
+        theta = 0.0;
+        while (theta < M_PI/2) {
+          double P = dPdt(theta, a, z);
+          double t = Trapping_time(theta, z);
+          if (theta > 0.0) {weight = sin(theta) * dTheta;}
+          else { weight = 0.0;};
+          double P_weight = P * weight * weight_a;
+          double t_weight = t * weight;
+          sum_P += P_weight;
+          sum_t += t_weight;
+          sum_weight += weight;
+
+          theta += dTheta;
+        }
+        double avg_P = (sum_weight > 0) ? (sum_P / sum_weight) : 0.0;
+        double avg_t = (sum_weight > 0) ? (sum_t / sum_weight) : 0.0;
+        fprintf(fp, "%f %f %f %e\n", a, z, avg_t, avg_P);
+        a += dA;
+      }
+      printf("Finished z = %f mm\n", z);
+      z += dZ;
+    }
+    fclose(fp);
+  }
+
+  // Absorption Length の効果を考慮に入れ、aで平均化したもの
+  void Calc_dPdt_a_with_a_dist(const char *fileName, double thetaStep = 10, double zStep = 20){
+    FILE *fp = fopen(fileName, "w");
+    double theta = 0.0;
+    double dTheta = thetaStep*M_PI/180;
+    double z = 0.0;
+    double dZ = zStep;
+    double weight = 0.0;
+    fprintf(fp, "z t dPdt\n");
+
+    while(z <GetL()){
+      double sum_P = 0.0;
+      double sum_t = 0.0;
+      double sum_weight = 0.0;
+      theta = 0.0;
+      while(theta < M_PI/2){
+        double P = dPdt_a(z, theta);
+        double t = Trapping_time(theta, z);
+        if (theta > 0.0) {weight = sin(theta) * dTheta;}
+          else { weight = 0.0;};
+        double P_weight = P * weight ;
+        double t_weight = t * weight;
+        sum_P += P_weight;
+        sum_t += t_weight;
+        sum_weight += weight;
+
+        printf("Calculating... Finished theta = %f \n",theta);
+        fflush(stdout);
+        theta += dTheta;
+      }
+      double avg_P = (sum_weight > 0) ? (sum_P / sum_weight) : 0.0;
+      double avg_t = (sum_weight > 0) ? (sum_t / sum_weight) : 0.0;
+      fprintf(fp, "%f %f %e\n", z, avg_t, avg_P);
+
+      printf("Calculating... Finished z = %f mm / %f mm\n", z, GetL());
+      fflush(stdout);
+
+      z += dZ;
+    }
+    fclose(fp);
+  }
+
+  // zは固定し、Absorption Length の効果を考慮に入れ、aで平均化したもの
+  void Calc_dPdt_a_with_a_dist_solidz(const char *fileName, double thetaStep = 1){
+    FILE *fp = fopen(fileName, "w");
+    double theta = 0.0;
+    double dTheta = thetaStep*M_PI/180;
+    double z = 0;
+    double t;
+    double weight = 0.0;
+
+    double P_weight;
+    theta = 0.0;
+    fprintf(fp, "t dPdt\n");
+    while(theta < M_PI/2){
+      double P = dPdt_a(z, theta);
+      t = Trapping_time(theta, z);
+      if (theta > 0.0) {weight = sin(theta) * dTheta;}
+        else { weight = 0.0;};
+      P_weight = P * weight ;
+
+      fprintf(fp, "%f %e\n", t, P_weight);
+      printf("Calculating... Finished theta = %f \n",theta);
+      fflush(stdout);
+      theta += dTheta;
+    }
+
+    fclose(fp);
+  }
+
+  /**
+   * Komae's (18)
+   */
+  double GetAprime(double a, double z, double theta, double phi) {
+    SetZ(z);
+    SetTheta(theta);
+    SetPhi(phi);
+    return f_aprime(a, this);
+  }
+  /**
+   * Derivative of (18) with respect to a, partial a'/partial a
+   */
+  // 最後の結果が初期条件aによってどのような影響を受けいているかを微分によって評価
+  double GetAprime_deriv(double a, double z, double theta, double phi) {
+    SetZ(z);
+    SetTheta(theta);
+    SetPhi(phi);
+    gsl_function F;
+    F.function = f_aprime;
+    F.params = this;
+    double result, err;
+    gsl_deriv_forward(&F, a, 0.001, &result, &err);
+    return result;
+  }
+
+    // ファイバーのabsorptionの効果を計算する
+  /* @param psi Azimuthal angle with respect to the cross-section of the fiber*/
+    //aの初期位置を決定する分布関数
+  double a_initial(double a, double psi){
+    SetA(a);
+    SetPsi(psi);
+    double r = GetD1();
+    double l_abs = GetLabs();
+    double s = sin(psi);
+    double c = cos(psi);
+    double root_arg = a*a - r*r*s*s;
+    if (root_arg < 0) {
+        return 0.0;
+    }
+    double root = sqrt(root_arg);
+    if (fabs(root) < 1e-30 || fabs(l_abs) < 1e-30) {
+        return 0.0;
+    }
+    double ch = cosh(root/l_abs);
+    double sh = sinh(r*c/l_abs);
+    if (fabs(sh) < 1e-30) {
+        return 0.0;
+    }
+    double Adist = 2/l_abs*exp(-r*c/l_abs)*ch*a/root;
+    return Adist;
+  }
+
+  //aの初期位置を決定する分布の平均化
+  double Get_a_initial_distribution(double a, double psiStep = 1){
+    double psi = 0.0;
+    double dPsi = psiStep*M_PI/180;
+    double weight = 0.0;
+    double sum_Adist = 0.0;
+    double sum_weight = 0.0;
+    while(psi < M_PI/2){
+      double Adist = a_initial(a, psi);
+      if (psi> 0.0) {weight = dPsi;}
+      else { weight = 0.0;};
+      double Adist_weight = Adist*weight;
+      sum_Adist += Adist_weight;
+      sum_weight += weight;
+
+      psi += dPsi; 
+    }
+    double avg_Adist = (sum_weight > 0) ? (sum_Adist / sum_weight) : 0.0;
+    return avg_Adist;
+  }
+
+  void Check_a_dist(const char *fileName, double psiStep = 1, double aStep = 0.005){
+    FILE *fp = fopen(fileName, "w");
+    double psi = 0.0;
+    double a = 0.0; 
+    double dA = aStep;
+    while(a < GetD1()){
+      double Adist = a_initial(a, psi);
+      fprintf(fp, "%f %f\n", a, Adist);
+      printf("Finished a %f mm\n", a);
+      a += dA;
+    }
+    fclose(fp);
+  }
+
+  //Escap angle Distribution
+  double Escape_angle_distribution(double theta, double a){
+    double n_ice = 1.309;
+    double n =  n_ice / GetN0();
+    double weight_a = Get_a_initial_distribution(a);
+    double weight_jac = n * sqrt(1 - sin(theta)*sin(theta) / (n*n))/cos(theta);
+    double weight = weight_a * weight_jac;
+    return weight;
+  };
+
+  double dPdTheta_escape(double theta) { 
+    gsl_function F;
+    F.function = f_integral_escape_dist;
+    F.params = this;
+    SetTheta(theta);
+    double result, err;
+    double epsabs = 1e-10; // 絶対誤差の許容値
+    double epsrel = 1e-5;  // 相対誤差の許容値
+    gsl_integration_qag(&F, 0, _d1, epsabs, epsrel, 5000, GSL_INTEG_GAUSS41, _w5, &result, &err);
+    double c = cos(theta);
+    double s = sin(theta);
+    double att = 1.0 - exp(-_L/c/_Latt);
+    return 2.0*result/_d1/_d1*s*c*_Latt*att/_L;
+  };
+
+  void Calc_escape_angle(const char *fileName, double thetaStep = 1.0){
+    double theta = 0.0;
+    double dTheta = thetaStep*M_PI/180;
+    vector<double> v;
+    double sum = 0.0;
+    while (theta < M_PI/2) {
+      double n_ice = 1.309;
+      double arg = GetN0()/n_ice * sin(theta);
+      if (arg > 1.0) {
+          break; 
+      }
+      double P = dPdTheta_escape(theta);
+      v.push_back(P);      
+      sum += P*dTheta;
+      theta += dTheta;
+    }    
+    FILE *fp = fopen(fileName, "w");
+    fprintf(fp, "theta dPdTheta\n");
+    theta = 0.0;
+    for (size_t i = 0; i < v.size(); i++) {
+      double n_ice = 1.309;
+      double arg = GetN0()/n_ice * sin(theta);
+        if (arg > 1.0) {
+            break; 
+        }
+      double theta_escape = asin(arg);
+      fprintf(fp, "%f %f\n", theta_escape*180/M_PI, v[i]/sum);
+      theta += dTheta;
+    }
+    fclose(fp);
+  }
+
+};
+
+#endif

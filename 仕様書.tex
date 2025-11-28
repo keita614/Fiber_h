@@ -34,6 +34,60 @@
 そこで、本稿では光ファイバー内での光の伝播モデルを構築し、光ファイバー内での光の伝播について解析的に評価することを試みる。
 
 \section{光ファイバー内での光子の伝播モデル}
+光ファイバーの中で光線は$\bm{x}_0 = (a, 0, 0)$で発光し、方向ベクトル$\bm{v}$で伝播し、半径$d$の円筒の$\bm{x}_1 = (x_1, y_1, z_1)$ でファイバー表面に衝突する(Figure \ref{fig:Single_cladding})。
+光線の式は以下のように表される。
+\begin{align}
+  \bm{x} &= t \bm{v} + \bm{x}_0 = t \begin{pmatrix}
+    \sin \theta \cos \phi \\
+    \sin \theta \sin \phi \\
+    \cos \theta
+  \end{pmatrix} + \begin{pmatrix}
+    a \\
+    0 \\ 
+    0
+  \end{pmatrix}.
+\end{align}
+$x_1^2 + y_1^2 = d^2$を用いると、
+\begin{align}
+  x_1^2 + y_1^2 = (t \sin \theta \cos \phi + a)^2 + (t \sin \theta \sin \phi)^2 &= d^2 \nonumber \\
+  (t \sin \theta)^2 + 2 a \cos \phi (t \sin \theta) + a^2 - d^2 &= 0 \nonumber \\
+  t \sin \theta = -a \cos \phi + \sqrt{a^2 \cos^2 \phi - a^2 + d^2} &= -a \cos \phi + \sqrt{d^2 - a^2 \sin^2 \phi} \nonumber \\
+  &\equiv -a \cos \phi + b, \; \; \;  b \equiv \sqrt{d^2 - a^2 \sin^2 \phi}. \label{eq:solt}
+\end{align}
+したがって、ファイバー表面に衝突する点$\bm{x}_1$の座標$(x_1, y_1)$は以下のように表される。
+\begin{align}
+  x_1 &= t \sin \theta \cos \phi + a = -a \cos^2 \phi + b \cos \phi  + a \label{eq:normx}\\
+  y_1 &= t \sin \theta \sin \phi = -a \cos \phi \sin \phi + b \sin \phi. \label{eq:normy} 
+\end{align}
+$\bm{x}_1 = (x_1, y_1, z_1)$におけるファイバー表面での単位法線ベクトルは$(x_1, y_1, 0)$である。
+\eqref{eq:normx}、\eqref{eq:normy}および$x_1^2 + y_1^2 = d^2$を満たすことから、$\bm{x}$での単位法線ベクトルの成分は$\bm{n}_1 = (x_1/d, y_1/d, 0)$となる。
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.9\columnwidth]{Figure/Single_cladding_fiber.png}
+  \caption{Single-cladding fiber}
+  \label{fig:Single_cladding}
+\end{figure}
+
+光のファイバー表面への入射角$\psi_1$(法線ベクトル$\bm{n}_1$に対する角度)は$\cos \psi_1 = \bm{n}_1 \cdot \bm{v}$を満たし、$\cos \psi_1$は次のように計算される。
+\begin{align}
+  \cos \psi_1 &= \frac{1}{d} \left( -a \sin \theta \cos^3 \phi + b \sin \theta \cos^2 \phi + a \sin \theta \cos \phi - a \sin \theta \cos \phi \sin^2 \phi + b \sin \theta \sin^2 \phi \right) \nonumber \\
+  &= \frac{1}{d} \left( a \sin \theta \cos \phi (-\cos^2 \phi + 1 - \sin^2 \phi) + b \sin \theta \right) = \frac{b}{d} \sin \theta = \sin \theta \sqrt{1 - (a/d)^2 \sin^2 \phi}
+ \label{eq:cospsi}
+\end{align}
+内部での全反射は、スネルの法則より入射角$\psi_1$が以下の関係を満たす時に起こる。
+\begin{align}
+  \sin \psi_1 &\ge \sin \psicone \equiv \frac{n_{c1}}{n_f} \label{eq:criticalangle1}
+\end{align}
+ここで、$\psicone$はファイバーのコアの屈折率$n_f$とクラッドの屈折率$n_{c1}$から決まる臨界角である。
+全反射を起こす時に取り得る$\theta$の最大値$\theta_{\mathrm{max}}$は、$\psicone$と次のように対応する。
+\begin{align}
+  \cos \psicone &= \frac{b}{d} \sin \thetamax(\phi)  = \sin \thetamax(\phi) \sqrt{1 - (a/d)^2 \sin^2 \phi}.
+\end{align}
+
+光ファイバー内で光子が連続して2回反射する間の移動距離の差は次のように表される。
+\begin{align}
+\Delta \ell &= \left| t_+ - t_- \right| = \frac{2}{\sin \theta} b = \frac{2}{\sin \theta} \sqrt{d^2 - a^2 \sin^2 \phi}. \label{eq:deltaell} 
+\end{align}
 
 \section{コア軸からの距離$a$の関数としてのTrapping Efficiency}
 

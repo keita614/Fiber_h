@@ -161,9 +161,75 @@ Trapping Efficiencyは式\eqref{eq:solidangle1}で与えられるが、式\eqref
 $d_2$や$n_{c1}$などの新たな要素が現れるわけではないことに注意していただきたい。
 
 \section{ファイバー端からの距離$z$でのTrapping Efficiency}
+光はファイバー中で減衰し、元の光子数の$1/e$の数に減衰するのに必要な長さを減衰長という。
+この減衰の効果を考慮に入れるとTrapping Efficiencyの計算は式\eqref{eq:solidangle1}から次のように書き換えられる。
+\begin{align}
+  P(a, z) &= \frac{1}{4 \pi} \int_{\Phi} \int_{\mumin(\phi, a)}^1 \exp\left( -\frac{L - z}{\mu \Latt}\right) \, d\mu \, d\phi, \label{eq:Paz}
+\end{align}
+ここで$z$はファイバー内で光が発せらるファイバー端からの位置であり、$(L-z)/\cos \theta = (L-z)/\mu$は光の実質的な伝播距離、$\exp(-(L-z)/\mu \Latt)$は光の減衰の効果を表している。
+光が長さ$L$のファイバー内で一様に発せられると考えた場合、$z$で平均化されたTrapping Efficiencyは次のようになる。
+\begin{align}
+  P_{\mathrm{att}}(a) &= \frac{1}{L} \int_0^L P(a, z) \, dz \label{eq:avezPa}
+\end{align}
+この計算結果は、図\ref{fig:trapp_eff}に示されている。
 
+光が体積$V = \pi d^2 L$の中で一様かつ等方的に発せられた場合、Trapping Efficiencyは次のように計算される。
+\begin{align}
+  \left<P_{\mathrm{att}}\right> &= \frac{1}{V} \int_V P(a, z) \, dV = \frac{1}{\pi d^2} \int_0^d 2 \pi a P_{\mathrm{att}}(a) \, da \label{eq:P-aveaz}
+\end{align}
+
+\begin{table}
+  \centering
+  \caption{長さ$L = 1000$ mm、$\Latt = 4000$ mmのsingle- と double-claddingのファイバーに対するTrapping Efficienciesの一覧}
+  \begin{tabular}{cccccc}
+  Cladding  & $n_0$  & $n_1$ & $n_2$ & $\left<P\right>$ & $\left<P_{\mathrm{att}}\right>$  \\ \hline
+Single & $1.59$ & $1.49$ & -   & $0.06092 \pm 0.00000$ & $0.05154 \pm 0.00002 $ \\
+Double & $1.59$ & $1.49$ & $1.42$ & $0.10120 \pm 0.00000$ & $0.08438 \pm 0.00001$
+  \end{tabular}
+  \label{tab:my_label}
+\end{table}
 
 \section{ファイバー内での光子のさまざまなパラメータの分布}
+\subsection{角度分布}
+理想的なファイバーにおいて、ファイバーの軸に対する角度$\theta$は伝播する光子に対して保存される。
+つまり、cladやファイバーの外側の物質との境界で起きる全反射では、角度$\theta$は変化しない。
+これは、clad内での全反射において、光は全反射の前と後で計2度屈折し、その影響は打ち消しあうためである。
+その結果として、初期の$\theta$の値は保存される。
+このことより、伝播する光が方位角$\phi$に対して一様に発せられる時、ファイバー内を伝播する光の$\theta$分布は次のように表される。
+\begin{align}
+  \frac{dP(a, \theta)}{d\theta} &= \frac{1}{2 \pi} \sin \theta \int_{\Phi(\theta)}  \, d \phi, \label{eq:dPdtheta}
+\end{align}
+ここで、任意の$a$と$\theta$に対して、$\phi$に関する積分の区間は、式\eqref{eq:criticalangle1}を$\phi$に適用して得られる$\Phi(\theta)$の範囲に制限される。
+
+\begin{figure}
+  \centering
+  \includegraphics[scale=0.6]{Figure/Trapping_Efficiency_Theta.png}
+  \caption{$\theta$ distribution of photons at $z = L$.}
+  \label{fig:Trapping_Efficiency_Theta}
+\end{figure}
+
+体積$V = \pi d^2 L$のファイバー内で一様かつ等方的に発せられる光に対して、微小体積$dV = 2 \pi a \, da \, dz$で平均化すると、ファイバー端における平均角度分布は次のように表される。
+\begin{align}
+  \left< \frac{dP(\theta)}{d\theta} \right> &= \frac{1}{V} \int_V \frac{dP(a, \theta)}{d\theta} \exp \left( -\frac{L - z}{\cos \theta \Latt} \right) \, dV \nonumber \\
+  &= A(\theta) \int_0^d 2 \pi a \frac{dP(a, \theta)}{d\theta}  \, da. \label{eq:dPdtheta-aveV}\\
+  A(\theta) &\equiv \frac{\cos \theta \Latt}{V} \left( 1 - \exp \left( -\frac{L}{\cos \theta \Latt} \right)\right)  \nonumber
+\end{align}
+この計算結果は図\ref{fig:Trapping_Efficiency_Theta}に示されている。
+
+\subsection{移動距離分布}
+角度分布の式\eqref{eq:dPdtheta}と式\eqref{eq:dPdtheta-aveV}は次のように表すことができる。
+\begin{align}
+   \frac{dP(a, \theta)}{d \cos \theta} &= \frac{1}{2 \pi} \int_{\Phi(\theta)}  \, d \phi, \label{eq:dPdcostheta} \\
+     \left< \frac{dP(\theta)}{d\cos\theta} \right> &= \frac{1}{V} \int_V \frac{dP(a, \theta)}{d\cos\theta} \exp \left( -\frac{L - z}{\cos \theta \Latt} \right) \, dV. = A(\theta) \int_0^d 2 \pi a \frac{dP(a, \theta)}{d\cos\theta} \, da \label{eq:dPdcostheta-aveV}
+\end{align}
+ここで、$\cos\theta$は光の移動距離$\ell(z, \, \theta)$へと次の式のように対応することができる。
+\begin{align}
+\ell(z, \, \theta) = \frac{L-z}{\cos \theta}, \label{eq:pathlengthcostheta}
+\end{align}
+これより、
+\begin{align*}
+  \frac{d\cos\theta}{d\ell} &= - \frac{L-z}{\ell^2}
+\end{align*}
 
 \section{Fiber.hに実装されている関数の仕様}
 

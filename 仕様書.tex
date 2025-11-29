@@ -64,7 +64,7 @@ $\bm{x}_1 = (x_1, y_1, z_1)$におけるファイバー表面での単位法線�
 \begin{figure}[h]
   \centering
   \includegraphics[width=0.9\columnwidth]{Figure/Single_cladding_fiber.png}
-  \caption{Single-cladding fiber}
+  \caption{Single-cladding ファイバー}
   \label{fig:Single_cladding}
 \end{figure}
 
@@ -90,7 +90,7 @@ $\bm{x}_1 = (x_1, y_1, z_1)$におけるファイバー表面での単位法線�
 \end{align}
 
 \section{コア軸からの距離$a$の関数としてのTrapping Efficiency}
-\subsection{Single-cladding fiber}
+\subsection{Single-cladding ファイバー}
 まず、Trapping Efficiencyとは、光ファイバー内で発した光子のうち、全反射を起こしてファイバー内を伝播する光子の割合である。
 光子が球面上に等方的に伝播していくと考えると、Trapping Efficiencyは全立体角のうち、ファイバー端に届く光子の立体角の割合を考えることで得られる。
 このことより、半径$d$の光ファイバー内で、コア軸からの距離$a$で発した光子が式\eqref{eq:criticalangle1}を満たしながら全反射を起こす時のTrapping Efficiencyは式\eqref{eq:solidangle1}のように考えられる。
@@ -107,13 +107,61 @@ $\mumin(\phi, a)$は式\eqref{eq:cospsic2}のように計算される。
 \end{align}
 式\eqref{eq:solidangle1}での$\phi$積分は、$\cos^2 \psicone/(1 - (a/d)^2 \sin^2 \phi) < 1$を満たすつまり、式\eqref{eq:cospsic2}を満たすような$\Phi$の範囲で行われる。
 式\eqref{eq:solidangle1}の積分は数値積分により計算され、その結果が図\ref{fig:trapp_eff}である。
+Trapping Efficiencyをコア軸からの距離$a$で平均化する計算は次の式で行われる。
+\begin{align}
+  \left<P\right> &= \frac{1}{\pi d^2} \int_0^{d} 2 \pi a P(a) \, da. \label{eq:Pd1}
+\end{align}
+Single-claddingファイバーの$n_0 = 1.59, n_1 = 1.49$と$d = 0.48$ mmに対して、$\left<P\right> = 0.061$と計算される。
+これは図\ref{fig:trapp_eff}の水平な線と\ref{tab:my_label}の値を記されている。
 \begin{figure}[h]
   \centering
   \includegraphics[width=0.9\columnwidth]{Figure/Trapping_Efficiency.png}
-  \caption{コア軸からの距離$a$の関数としてのTrapping Efficiency}
+  \caption{single、double、iceは光子が全反射を起こす層を表している。緑と青、紫の線は式\eqref{eq:solidangle1}により計算されたTrapping Efficiency$P(a)$であり、赤と橙、茶色は式\eqref{eq:avezPa}で計算された、減衰長の効果を考慮に入れたTrapping Efficiency$P_{\mathrm{att}}(a)$である。}
   \label{fig:trapp_eff}
 \end{figure}
+
+\subsection{Double- と multi-cladding ファイバー}
+\begin{figure}
+  \centering
+  \includegraphics[width=0.99\columnwidth]{Figure/Double_cladding_fiber.png}
+  \caption{Double-cladding ファイバー}
+  \label{fig:radii2}
+\end{figure}
+Double-claddingファイバーの場合、外側のcladの屈折率$n_2$を考慮する必要がある。
+光が初期位置$\bm{x}_0 = (a, 0, 0)$から速度$\bm{v}(\theta, \phi)$で発せられた時を考える。
+光は内側のcladに位置$\bm{x}_1$おいて、$\bm{n}_1$に対して入射角$\psi_1$で入射する。ここで、$\psi_1$は式\eqref{eq:cospsi}を満たす。
+もし$\psi_1 \ge \psicone$ならば、$\bm{x}_1$において全反射が起こる。
+しかし、$\psi_1 < \psicone$であるならば、光は内側のcladに屈折して侵入する。
+外側のcladに対する入射角$\psi_2 (> \psi_1)$は、$n_f, n_{c1}$によってスネルの法則により決定され、次の式を満たす。
+\begin{align}
+  \frac{\sin \psi_2}{\sin \psi_1} &= \frac{n_f}{n_{c1}}. \label{eq:refcondition2}
+\end{align}
+この屈折により、光の進行方向$\bm{v}$は変化する。しかし、ここで変わるのは$\theta$のみであり、$\phi$は変化しない。
+この屈折に関する式は次のように表される。
+\begin{align}
+  \sin \psi_2 &\ge \sin \psictwo \equiv \frac{n_{c2}}{n_{c1}}, \label{eq:psictwo}
+\end{align}
+ここで、$n_{c2}$は外側のcladの屈折率である。
+式\eqref{eq:refcondition2}を用いると屈折に関する式は、$\psi_1$を用いて書き換えられる。
+\begin{align}
+  \sin \psi_1 &= \frac{n_{c1}}{n_f} \sin \psi_2 \ge \frac{n_{c1}}{n_f} \sin \psictwo = \frac{n_{c1}}{n_f} \frac{n_{c2}}{n_{c1}} = \frac{n_{c2}}{n_f} \label{eq:criticalangle2}
+\end{align}
+これより、multi-claddingファイバーに対しては全反射を起こす一番外側の層の屈折率$n_m$が屈折に関する式を決定することがわかる。
+このことは次のように表される。
+\begin{align}
+  \sin \psi &> \frac{n_m}{n_f}. \label{eq:criticalangle3}
+\end{align}
+Trapping Efficiencyは式\eqref{eq:solidangle1}で与えられるが、式\eqref{eq:cospsic2}の代わりに$\mumin(\phi, a) = \cos \theta_{\mathrm{max}}(\phi, a)$を計算しておく必要がある。
+\begin{align}
+   \mumin(\phi, a) &= \cos \thetamax(\phi, a) = \left(1 - \sin^2 \thetamax(\phi, a) \right)^{1/2} = \left(1  - \frac{\cos^2 \psi_m}{1 - (a/d)^2 \sin^2 \phi} \right)^{1/2} \nonumber \\
+  &= \left(1  - \frac{1 - (n_m/n_f)^2}{1 - (a/d)^2 \sin^2 \phi} \right)^{1/2},
+  \label{eq:cospsic3}
+\end{align}
+ここで、$n_m$は最も外側のcladかファイバーを取り囲む周囲の物質（氷など）の屈折率であり、$\psi_m$はそれに対する入射角である。
+$d_2$や$n_{c1}$などの新たな要素が現れるわけではないことに注意していただきたい。
+
 \section{ファイバー端からの距離$z$でのTrapping Efficiency}
+
 
 \section{ファイバー内での光子のさまざまなパラメータの分布}
 

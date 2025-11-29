@@ -27,10 +27,10 @@
 \newpage
 
 \section{はじめに}
-当研究室では、IceCube-Gen2で考えられるveto能力の低下を防ぐために、波長変換機能を持った光ファイバーを用いた集光器の開発を行っている。
+当研究室では、IceCube-Gen2で考えられるveto能力の低下を防ぐために、波長変換機能を持つ光ファイバーを用いた集光器の開発を行っている。
 この集光器において、どれほどの光を集光できるかを評価するために、光ファイバーそのものの性能評価を行う必要がある。
 そのためのシミュレーションとして、Geant4を用いた光ファイバー内での光の伝播シミュレーションを行っている。
-このGeant4シミュレーション以外の手法を用いて、光ファイバー内での光の伝播を評価することができれば、シミュレーション結果の妥当性を確認することができる。
+このGeant4シミュレーション以外の手法を用いて、光ファイバー内での光の伝播を評価することができれば、Geant4のシミュレーション結果の妥当性を確認することができる。
 そこで、本稿では光ファイバー内での光の伝播モデルを構築し、光ファイバー内での光の伝播について解析的に評価することを試みる。
 
 \section{光ファイバー内での光子の伝播モデル}
@@ -90,7 +90,29 @@ $\bm{x}_1 = (x_1, y_1, z_1)$におけるファイバー表面での単位法線�
 \end{align}
 
 \section{コア軸からの距離$a$の関数としてのTrapping Efficiency}
-
+\subsection{Single-cladding fiber}
+まず、Trapping Efficiencyとは、光ファイバー内で発した光子のうち、全反射を起こしてファイバー内を伝播する光子の割合である。
+光子が球面上に等方的に伝播していくと考えると、Trapping Efficiencyは全立体角のうち、ファイバー端に届く光子の立体角の割合を考えることで得られる。
+このことより、半径$d$の光ファイバー内で、コア軸からの距離$a$で発した光子が式\eqref{eq:criticalangle1}を満たしながら全反射を起こす時のTrapping Efficiencyは式\eqref{eq:solidangle1}のように考えられる。
+\begin{align}
+  P(a) &= \frac{1}{4 \pi} \int_{\Phi} \int_0^{\thetamax(\phi, a)} \sin \theta \, d\theta \, d\phi = \frac{1}{4 \pi} \int_{\Phi} \int_{\mumin(\phi, a)}^1 \, d\mu \, d\phi \nonumber \\
+  &= \frac{1}{4 \pi} \int_{\Phi} (1 - \mumin(\phi, a)) \, d\phi = \frac{1}{2} - \frac{1}{4\pi} \int_{\Phi} \mumin(\phi, a) \, d\phi,\label{eq:solidangle1}
+\end{align}
+ここで、$\mu \equiv \cos \theta$、$\mumin(\phi, a) \equiv \cos \theta_{\mathrm{max}}(\phi, a)$である。
+$\mumin(\phi, a)$は式\eqref{eq:cospsic2}のように計算される。
+\begin{align}
+  \mumin(\phi, a) &\equiv \cos \theta_{\mathrm{max}}(\phi, a) = \left( 1 - \sin^2 \thetamax(\phi, a)\right)^{1/2} = \left(1  - \frac{\cos^2 \psicone}{1 - (a/d)^2 \sin^2 \phi} \right)^{1/2} \nonumber \\
+  &= \left(1  - \frac{1 - (n_{c1}/n_f)^2}{1 - (a/d)^2 \sin^2 \phi} \right)^{1/2}.
+  \label{eq:cospsic2}
+\end{align}
+式\eqref{eq:solidangle1}での$\phi$積分は、$\cos^2 \psicone/(1 - (a/d)^2 \sin^2 \phi) < 1$を満たすつまり、式\eqref{eq:cospsic2}を満たすような$\Phi$の範囲で行われる。
+式\eqref{eq:solidangle1}の積分は数値積分により計算され、その結果が図\ref{fig:trapp_eff}である。
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.9\columnwidth]{Figure/Trapping_Efficiency.png}
+  \caption{コア軸からの距離$a$の関数としてのTrapping Efficiency}
+  \label{fig:trapp_eff}
+\end{figure}
 \section{ファイバー端からの距離$z$でのTrapping Efficiency}
 
 \section{ファイバー内での光子のさまざまなパラメータの分布}

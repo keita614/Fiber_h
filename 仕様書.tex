@@ -189,6 +189,27 @@ Double & $1.59$ & $1.49$ & $1.42$ & $0.10120 \pm 0.00000$ & $0.08438 \pm 0.00001
   \label{tab:my_label}
 \end{table}
 
+\section{ファイバー内で発光する初期位置$a$}
+実際のファイバーでは、外部から入射してきた光を吸収し、ファイバー内で発光することで光を伝えている。
+この、光が吸収されるまでの距離を吸収長とよび、入射した光の光子数が$1/e$になるまでの距離である。
+この吸収の効果のために、ファイバー内で発光する地点は一様ではない。
+そこで、ある吸収長に対する発光位置のコア軸からの距離$a$の分布考えることにより、擬似的にファイバーの外から光が入射した状況を考える。
+これに関する詳細は、古前壱朗朗氏によって記述された別資料に記載されている。
+その資料によると、ファイバーに対して垂直に入射した光子が吸収される地点$a$の分布関数は次のようになる。
+\begin{equation}
+  \frac{dN}{da} = \frac{2}{l_{abs}} \exp(\frac{-r \cos\psi}{l_{abs}}) \cosh(\frac{\sqrt{a^2-r^2\sin^2\psi}}{l_{abs}}) \frac{a}{\sqrt{a^2-r^2\sin^2\psi}}
+  \label{eq:Initial_Position}
+\end{equation}
+この結果は規格化されたものである。また、$r = 半径、l_{abs} = 吸収長, \psi = ファイバーに入射する光子の角度$である。
+この結果を$\psi$について平均化したものを実際の計算では使っている。
+その分布を表したものが図\ref{fg:Distribution_of_Initial_Position}である。
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.7\columnwidth]{Figure/Distribution_of_a.png}
+  \caption{Distribution of Initial Position}
+  \label{fg:Distribution_of_Initial_Position}
+\end{figure}
+
 \section{ファイバー内での光子のさまざまなパラメータの分布}
 \subsection{角度分布}
 理想的なファイバーにおいて、ファイバーの軸に対する角度$\theta$は伝播する光子に対して保存される。
@@ -219,8 +240,8 @@ Double & $1.59$ & $1.49$ & $1.42$ & $0.10120 \pm 0.00000$ & $0.08438 \pm 0.00001
 \subsection{移動距離分布}
 角度分布の式\eqref{eq:dPdtheta}と式\eqref{eq:dPdtheta-aveV}は次のように表すことができる。
 \begin{align}
-   \frac{dP(a, \theta)}{d \cos \theta} &= \frac{1}{2 \pi} \int_{\Phi(\theta)}  \, d \phi, \label{eq:dPdcostheta} \\
-     \left< \frac{dP(\theta)}{d\cos\theta} \right> &= \frac{1}{V} \int_V \frac{dP(a, \theta)}{d\cos\theta} \exp \left( -\frac{L - z}{\cos \theta \Latt} \right) \, dV. = A(\theta) \int_0^d 2 \pi a \frac{dP(a, \theta)}{d\cos\theta} \, da \label{eq:dPdcostheta-aveV}
+   \frac{dP(a, \theta)}{d \cos \theta} &= \frac{dP(a, \theta)}{d \theta} \frac{d \theta}{d \cos \theta} = -\frac{1}{\sin \theta}\frac{dP(a, \theta)}{d \theta} = -\frac{1}{2 \pi} \int_{\Phi(\theta)}  \, d \phi, \label{eq:dPdcostheta} \\
+     \left< \frac{dP(\theta)}{d\cos\theta} \right> &= \frac{1}{V} \int_V \frac{dP(a, \theta)}{d\cos\theta} \exp \left( -\frac{L - z}{\cos \theta \Latt} \right) \, dV = A(\theta) \int_0^d 2 \pi a \frac{dP(a, \theta)}{d\cos\theta} \, da \label{eq:dPdcostheta-aveV}
 \end{align}
 ここで、$\cos\theta$は光の移動距離$\ell(z, \, \theta)$へと次の式のように対応することができる。
 \begin{align}
@@ -230,6 +251,20 @@ Double & $1.59$ & $1.49$ & $1.42$ & $0.10120 \pm 0.00000$ & $0.08438 \pm 0.00001
 \begin{align*}
   \frac{d\cos\theta}{d\ell} &= - \frac{L-z}{\ell^2}
 \end{align*}
+したがってTrapping Efficiencyの移動距離分布は次のように記述される。
+\begin{align}
+  \frac{dP(a, z)}{dl} = \frac{dP(a, z)}{d\cos\theta} \frac{d\cos\theta}{dl} = - \frac{L-z}{l^2} \frac{dP(a, z)}{d\cos\theta} = \frac{1}{2 \pi} \frac{L-z}{l^2} \int_{\Phi(\theta)}
+\end{align}
+同様にしてTrapping Efficiencyの移動距離をコア軸からの距離$a$とファイバー端からの距離$z$で平均化したものを考えると
+\begin{align}
+   \left< \frac{dP(\theta)}{d\ell} \right> &= \frac{1}{V} \int_V \frac{dP(a, \theta)}{d\cos\theta} \frac{d\cos\theta}{d\ell} \exp \left( -\frac{L - z}{\cos \theta \Latt} \right) \, dV \nonumber \\
+   &= \frac{1}{V} \exp \left( -\frac{\ell}{\Latt} \right)  \int_0^L \frac{z-L}{\ell^2} \,  dz \int_0^d 2 \pi a  \frac{dP(a, \theta)}{d\cos\theta}  \, da \nonumber \\
+  &= B(\theta) \int_0^d 2 \pi a  \frac{dP(a, \theta)}{d\cos\theta}  \, da
+  \label{eq:dPdell-aveV}\\
+  B(\theta) &\equiv  \frac{1}{V} \frac{\sin \theta \Latt}{\cos \theta}  \left( \cos \theta \Latt - e^{-L/\cos \theta \Latt} (\cos \theta \Latt + L) \right) \nonumber
+\end{align}
+
+\subsection{光がファイバー内で移動する時間の分布}
 
 \section{Fiber.hに実装されている関数の仕様}
 

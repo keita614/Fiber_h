@@ -125,6 +125,7 @@ private:
 
   //4.1 Angular Distribution
   //光子が全反射できるかどうかのチェック。できるなら１を返している
+  //関数名check_refrectionの方がわかりやすい気がする。
   static double f_integral_theta_dist(double phi, void *data) {
     Fiber *fiber = (Fiber *) data;
     double sinTheta = sin(fiber->GetTheta());

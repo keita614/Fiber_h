@@ -81,7 +81,7 @@ $\bm{x}_1 = (x_1, y_1, z_1)$におけるファイバー表面での単位法線�
 ここで、$\psicone$はファイバーのコアの屈折率$n_f$とクラッドの屈折率$n_{c1}$から決まる臨界角である。
 全反射を起こす時に取り得る$\theta$の最大値$\theta_{\mathrm{max}}$は、$\psicone$と次のように対応する。
 \begin{align}
-  \cos \psicone &= \frac{b}{d} \sin \thetamax(\phi)  = \sin \thetamax(\phi) \sqrt{1 - (a/d)^2 \sin^2 \phi}.
+  \cos \psicone &= \frac{b}{d} \sin \thetamax(\phi)  = \sin \thetamax(\phi) \sqrt{1 - (a/d)^2 \sin^2 \phi}. \label{eq:reflection_max}
 \end{align}
 
 光ファイバー内で光子が連続して2回反射する間の移動距離の差は次のように表される。
@@ -209,6 +209,8 @@ Double & $1.59$ & $1.49$ & $1.42$ & $0.10120 \pm 0.00000$ & $0.08438 \pm 0.00001
   \caption{Distribution of Initial Position}
   \label{fg:Distribution_of_Initial_Position}
 \end{figure}
+以下aで積分を行う際に、この分布を重み付として積分を行うことがある。
+この重みがaで積分する際のaの役割を担うことになる。つまりは、aが一様であるように積分をしていたところをこの分布関数に従うように積分を変更するということである。
 
 \section{ファイバー内での光子のさまざまなパラメータの分布}
 \subsection{角度分布}
@@ -220,7 +222,8 @@ Double & $1.59$ & $1.49$ & $1.42$ & $0.10120 \pm 0.00000$ & $0.08438 \pm 0.00001
 \begin{align}
   \frac{dP(a, \theta)}{d\theta} &= \frac{1}{2 \pi} \sin \theta \int_{\Phi(\theta)}  \, d \phi, \label{eq:dPdtheta}
 \end{align}
-ここで、任意の$a$と$\theta$に対して、$\phi$に関する積分の区間は、式\eqref{eq:criticalangle1}を$\phi$に適用して得られる$\Phi(\theta)$の範囲に制限される。
+ここで、任意の$a$と$\theta$に対して、$\phi$に関する積分の区間は、式\eqref{eq:reflection_max}を$\phi$に適用して得られる$\Phi(\theta)$の範囲に制限される。
+この積分の項が、任意の$a$と$\theta$に対して光が全反射できるかどうかを実質的に表すものになる。
 
 \begin{figure}
   \centering
@@ -253,7 +256,7 @@ Double & $1.59$ & $1.49$ & $1.42$ & $0.10120 \pm 0.00000$ & $0.08438 \pm 0.00001
 \end{align*}
 したがってTrapping Efficiencyの移動距離分布は次のように記述される。
 \begin{align}
-  \frac{dP(a, z)}{dl} = \frac{dP(a, z)}{d\cos\theta} \frac{d\cos\theta}{dl} = - \frac{L-z}{l^2} \frac{dP(a, z)}{d\cos\theta} = \frac{1}{2 \pi} \frac{L-z}{l^2} \int_{\Phi(\theta)}
+  \frac{dP(a, z)}{dl} = \frac{dP(a, z)}{d\cos\theta} \frac{d\cos\theta}{dl} = - \frac{L-z}{l^2} \frac{dP(a, z)}{d\cos\theta} = \frac{1}{2 \pi} \frac{L-z}{l^2} \int_{\Phi(\theta)} \label{eq:path_length_dist}
 \end{align}
 同様にしてTrapping Efficiencyの移動距離をコア軸からの距離$a$とファイバー端からの距離$z$で平均化したものを考えると
 \begin{align}
@@ -265,7 +268,111 @@ Double & $1.59$ & $1.49$ & $1.42$ & $0.10120 \pm 0.00000$ & $0.08438 \pm 0.00001
 \end{align}
 
 \subsection{光がファイバー内で移動する時間の分布}
+式\eqref{eq:path_length_dist}より、$\frac{dl}{dt} = c'$は明らかなので、Trapping Efficiencyの光の移動時間分布は次のように計算される。
+\begin{equation}
+  \frac{dP(a, z)}{dt} =\frac{dP(a, z)}{dl} \frac{dl}{dt} = \frac{c' \cos^2 \theta}{L-z} \frac{dP(a, z)}{d\cos \theta} = \frac{c'}{2 \pi} \frac{\cos^2\theta}{L-z}\int_{\Phi(\theta)} d \phi \label{eq:dPdt}
+\end{equation}
+これの$\theta $に関する平均化を行う。
+\begin{equation}
+  \left< \frac{dP}{dt} \right>_\theta = \int_{0}^{\pi/2}\sin \theta \frac{dP(a, z)}{dt} d\theta = \frac{c'}{2 \pi} \int_{0}^{\pi/2} \int_{\Phi(\theta)} \sin \theta \frac{\cos^2\theta}{L-z} d \phi d\theta
+  \label{eq:averaged_dPdt}
+\end{equation}
+\eqref{eq:averaged_dPdt}を用いて、それぞれの変数を細かなスッテプで刻むことにより、時間分布を求めることができる。
+それが以下である。
+\begin{figure}[h]
+  \centering
+  \begin{minipage}[b]{0.49\columnwidth}
+    \centering
+    \includegraphics[width=0.9\columnwidth]{Figure/Trapping_Efficiency_with_Absorption_Lenfth_log.png}
+    \caption{$\theta$ Transit Time Distribution of Trapping Efficiency (log scale)}
+    \label{fig:dPdt_log}  
+  \end{minipage}
+  \begin{minipage}[b]{0.49\columnwidth}
+    \centering
+    \includegraphics[width=0.9\columnwidth]{Figure/Trapping_Efficiency_with_Absorption_Lenfth_loglog.png}
+    \caption{$\theta$ Transit Time Distribution of Trapping Efficiency (loglog scale)}
+    \label{fig:dPdt_loglog}      
+  \end{minipage}
+\end{figure}
 
+このグラフの横軸はTransit Timeであり、縦軸はTrapping Efficiencyの時間分布、色の濃淡はz分布を表す。
+また、Efficiencyが大きいものはCore中心から遠く、Efficiencyが小さいものはCore中心に近い。
+
+次に、5章で論じた吸収長の効果を考慮に入れる。
+式\eqref{eq:Initial_Position}と式\eqref{eq:dPdt}より、$a$の初期位置の分布を重みとして平均化したTrapping Efficiencyの時間分布は次のようになる。
+\begin{equation}
+  \left<\frac{dP}{dt}\right>_a = \int_{0}^{d}\left< \frac{dP}{dt} \right>_\theta \times \left<\frac{dN}{da}\right>_{\psi}da
+  \label{eq:dPdt_with_a_dist}
+\end{equation}
+Geant4の計算では$z$を固定しているため、$z$を固定して計算をすると図\ref{fig:dPdt_ave_a_and_theta}のようになる。
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.9\columnwidth]{Figure/Trapping_Efficiency_with_Absorption_averaged_a_and_theta.png}
+  \caption{Trapping Efficiency Time Distribution with Initial Position Distribution}
+  \label{fig:dPdt_ave_a_and_theta}
+\end{figure}
+
+最後に、式\eqref{eq:dPdt_with_a_dist}を$z$についても平均化する。
+\begin{equation}
+  \left<\frac{dP}{dt}\right> = \frac{1}{L} \int_0^L \left<\frac{dP}{dt}\right>_a dz
+  \label{eq:dPdt_ave}
+\end{equation}
+
+\subsection{Trapping Efficiencyのsec分布}
+\eqref{eq:pathlengthcostheta}より、光の電波時間を考えると次の式のように求まる。
+\begin{equation}
+  t = \frac{l}{c'} = \frac{1}{c'}\frac{L-z}{\cos\theta}
+\end{equation}
+ここで$c'$はファイバー中での高速である。
+このことより、伝達時間と$\theta$には次のような関係がある。
+\begin{equation}
+  t = \frac{1}{\cos\theta}
+\end{equation}
+よって、Trapping Efficiencyの時間分布はその$\cos^{-1}(\theta) = \sec(\theta)$分布と似たような形になると思われる。
+そこで、Trapping Efficiencyのsec分布を考える。式\eqref{eq:dPdtheta-aveV}より、secの分布は次の式に従う。
+\begin{equation}
+  \frac{dP}{d\frac{1}{\cos\theta}} = \frac{\cos^2\theta}{\sin\theta}\frac{dP}{d\theta} = \frac{\cos^2\theta}{\sin\theta}A(\theta) \int_0^d 2 \pi a \frac{dP(a, \theta)}{d\theta}da
+  \label{dPdsec}
+\end{equation}
+これを$\theta$で平均化すると
+\begin{equation}
+  \left<\frac{dP}{d\frac{1}{\cos\theta}}\right>_{\theta} = \cos^2 \theta A(\theta) \int_0^d 2 \pi a \frac{dP(a, \theta)}{d\theta}da
+  \label{dPdsec_ave}
+\end{equation}
+この$\sec(\theta)$分布（図\ref{fig:dPdSec_theta}）が$<dP/dt>_a$（図\ref{fig:dPdt_ave_a_and_theta}）と似た形になることがわかる。
+グラフの$x$軸の最大位置を揃え、重ね合わせたグラフが図\ref{fig:dPdSec_dPdt}である。
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.9\columnwidth]{Figure/dPdSec_theta.png}
+  \caption{Trapping Efficiency Second Theta Distribution}
+  \label{fig:dPdSec_theta}
+\end{figure}
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.9\columnwidth]{Figure/dPdt_and_dPdSec_same_size.png}
+  \caption{Overlay of Trapping Efficiency Second Theta Distribution and Time Distribution}
+  \label{fig:dPdSec_dPdt}
+\end{figure}
+
+\subsection{脱出角度分布}
+脱出角度はTrapping Efficiencyのコア軸からの角度$\theta$によってスネルの法則により決定される。
+コア軸からの角度$\theta$をファイバー端への入射角と考え、脱出角度を$\theta_{esc}$とすると、スネルの法則より
+\begin{equation}
+  \sin \theta_{esc} = \frac{n_core}{n_f} \sin \theta
+\end{equation}
+ここで$n_{core}$はファイバーコアの屈折率、$n_f$はファイバー外の物質の屈折率である。
+以上より、Trapping Efficiencyの脱出角度分布は次の式で求められる。
+\begin{equation}
+  \frac{dP}{d\theta{core}} = \frac{dP}{d\sin\theta_{esc}}\frac{d\sin\theta_{esc}}{d\theta_{esc}} = \sqrt{1-sin^2\theta_{esc}}\frac{dP}{\frac{n_{core}}{n_f}d\sin\theta} = \frac{n_f}{n_{core}}\frac{\sqrt{1-sin^2\theta_{esc}}}{\cos\theta}\frac{dP}{d\theta}
+\end{equation}
+これにAbsorptionの効果を重み付として平均化したものが図\ref{fig:Escape_Angle_Distribution}である。なお、ここでは$n_f=1.309$(氷)として考えている。
+\begin{figure}
+  \centering
+  \includegraphics[width=0.9\columnwidth]{Figure/Escape_Angle_Distribution_peak.png}
+  \caption{Trapping Efficiency Escape Angle Distribution}
+  \label{fig:Escape_Angle_Distribution}
+\end{figure}
 \section{Fiber.hに実装されている関数の仕様}
 
 \end{document}

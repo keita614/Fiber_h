@@ -125,8 +125,7 @@ private:
 
   //4.1 Angular Distribution
   //光子が全反射できるかどうかのチェック。できるなら１を返している
-  //関数名check_refrectionの方がわかりやすい気がする。
-  static double f_integral_theta_dist(double phi, void *data) {
+  static double check_refrection(double phi, void *data) {
     Fiber *fiber = (Fiber *) data;
     double sinTheta = sin(fiber->GetTheta());
     double sinPhi = sin(phi);
@@ -491,7 +490,7 @@ public:
   //常定pdfの(22)式の計算の本体, dPdTheta(a, theta)=1/(2π)∫0^(2π) dφ これ大事
   double dPdTheta(double a, double theta) { 
     gsl_function F;
-    F.function = f_integral_theta_dist;
+    F.function = check_refrection;
     F.params = this;
     SetA(a);
     SetTheta(theta);

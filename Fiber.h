@@ -91,8 +91,8 @@ private:
 
   /**
    * 仕様書式(17)の被積分項
+   * 光がファイバー内で減衰する効果を表す項
    */
-  // For internal use by f_integral_phi_att() , 常定pdfの(19)式の被積分項
   static double f_integral_mu_att(double mu, void *data) {
     Fiber *fiber = (Fiber *) data;
     double L = fiber->GetL();
@@ -101,7 +101,12 @@ private:
     if (fabs(mu) < 1e-6) return 0;
     return exp(-(L-z)/mu/Latt);
   }
-  // Integrand for (16) , 常定pdfの(19)式のμ積分
+
+  /**
+   * 仕様書式(17)の積分本体
+   * 任意のzでのTrapping Effisciency P(a,z)のμ積分の項
+   * @param z は検出側とは逆のファイバー端からの距離
+   */
   static double f_integral_phi_att(double phi, void *data) {
     Fiber *fiber = (Fiber *) data;
     gsl_function F;
@@ -116,7 +121,10 @@ private:
     return result;
   }
   
-  // Integrand for (17) , 常定pdfの(19)式の積分結果
+  /**
+   * 仕様書式(18)の被積分項
+   * 任意のzでのTrapping Effisciency P(a,z)の結果をzで平均化するための被積分項
+   */
   static double f_integral_average_over_z(double z, void *data) {
     Fiber *fiber = (Fiber *) data;
     double a = fiber->GetA();
@@ -124,7 +132,10 @@ private:
     return Paz;
   }
   
-  // Integrand for (18) , 常定pdfの(20)式の積分結果にaをかけ、断面積での平均化に向けた計算
+  /**
+   * 仕様書式(19)の被積分項
+   * zで平均化されたTrapping Effisciency P(a,z)をaで平均化
+   */
   static double f_integral_average_over_za(double a, void *data) {
     Fiber *fiber = (Fiber *) data;
     double Pa = fiber->Calc_Pa_average_over_z(a);

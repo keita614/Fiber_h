@@ -2,20 +2,16 @@
 #define ___FIBER_H___
 
 /*!
- * This class describes an optical fiber and is used to calculate the trapping
- * efficiency for photons uniformly and isotropically emitted in the fiber.
+ * このクラスは、ファイバー内で光が一様等方に伝播することを前提として、
+ * そのTrapping Efficiencyのを計算するために作成した。
  *
  * December 2024
  * T. Kobayashi, I. Komae, and Y. Tsunesada
  * Osaka Metropolitan University
+ * 
+ * 2025年10月以降　湯淺　圭太も参画
  */
 
- /*!
- * 常定さんよりこのコードを受け取り、Geant4シミュレーションの結果をC++で解析するためのクラスとして改修せよ
- * との通達を受けたため、以降その改修に取り組んでいる。日本語のメモは全て私が取ったものである。
- * 2025年10月
- * 湯淺　圭太
- */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -36,6 +32,10 @@ using namespace std;
 
 class Fiber {
 private:
+  // =========================================================
+  //  1. メンバ変数 (Member Variables)
+  //     - クラス全体で使うデータはここにまとめる
+  // =========================================================
   /*! Fiber attributes */
   double _n0; /*!< Refractive index of the fiber core */
   double _n1; /*!< Refractive index of the inner cladding */
@@ -60,30 +60,38 @@ private:
   vector<double> table_val; //計算された初期位置分布の値
   bool is_table_loaded = false; //読み込み済みフラグ
   const string table_filename = "Initial_a_distribution.txt"; //保存ファイル名
+
+  // =========================================================
+  //  2. gslを用いた積分用のstatic関数
+  // =========================================================
+
+  // 仕様書3章 コア軸からの距離a の関数としてのTrapping Eﬃciency　//
+
   /**
-   * Function that describes the integrand of equation (9)
-   * The cosThetaMax is calculated by (10).
-   * This is a function of azimuthal angle phi, and takes four parameters:
-   *    n0: Refractive index of the fiber core
-   *    n1: Refractive index of the inner cladding
-   *    d: The radius of the fiber core
-   *    a: The off-axis distance of the photon emission point
+   * 仕様書式(9)の被積分項
+   * 任意のaに対するTrapping Efficiency P(a)の被積分項を取得
    */
-  //2 Trapping efficiency of a fiber as a function of off-axis distant a
-  //常定odfの(10)式の計算結果
   static double f_integral_solidangle(double phi, void *data) {
     Fiber *fiber = (Fiber *) data;
     double a = fiber->GetA();  
     return fiber->Calc_cosThetaMax(phi, a);
   }
-  // Integrand for (11) , 常定pdfの(9)式の計算結果にaをかけ、断面積での平均化に向けた計算
+
+  /**
+   * 仕様書式(11)の被積分項
+   * Trapping Efficiency P(a)をaで積分するための被積分項
+   */
   static double f_integral_average_over_a(double a, void *data) {
     Fiber *fiber = (Fiber *) data;
     double Pa = fiber->Calc_Pa(a);
     return a*Pa;
   }
 
-  //3 Trapping efficiency of a fiber of given length の計算
+  //　仕様書4章　ファイバー端からの距離z でのTrapping Eﬃciency　//
+
+  /**
+   * 仕様書式(17)の被積分項
+   */
   // For internal use by f_integral_phi_att() , 常定pdfの(19)式の被積分項
   static double f_integral_mu_att(double mu, void *data) {
     Fiber *fiber = (Fiber *) data;
@@ -350,12 +358,13 @@ public:
   double GetPatt() const { return _Patt; }
   double GetPatterr() const { return _Patterr; } 
   double GetLightSpeed() const { return 299.792458; } //光速 [mm/ns] 
-  /*!
-   * Calculate the boundary of theta using equation (10).
-   * @param phi Azimuthal angle of photon direction in [rad]
-   * @param a The off-axis distance at the photon emission point in [mm]
+
+  /**
+   * 仕様書式(10)式の計算本体
+   * 全反射を起こす時の最大のcosθの計算
+   * @param phi は方位角[rad]
+   * @param a はコア軸からの距離
    */
-  // 常定pdfの(10)式の計算本体
   double Calc_cosThetaMax(double phi, double a) {
     double sinphi = sin(phi);
     double sin2thetamax;    
@@ -368,12 +377,11 @@ public:
     double costhetamax = sqrt(1.0 - sin2thetamax);
     return costhetamax;
   }
-  
+
   /*!
-   * Calculate the trapping efficiency P(a) for a given "a" using the equation (9).
-   * @param a The off-axis distance at the photon emission point in [mm]
+   * 仕様書式(9)式の積分本体
+   * 任意のaに対するTrapping Efficiency P(a)の計算。
    */
-  //常定pdfの(9)式の積分本体
   double Calc_Pa(double a) {
     gsl_function F;
     SetA(a);
@@ -388,8 +396,10 @@ public:
     return 0.5 - result/4/M_PI;  
   }
 
-  /*! Calculate the average trapping efficiency <P> over "a" using the equation (11) */  
-  //上記の通り、常定pdfの(11)式の積分本体
+  /**
+   * 仕様書式(10)式の積分本体
+   * Trapping Efficiency P(a)をaで平均化する計算
+   */
   double Calc_P_average_over_a() {
     gsl_function F;
     F.function = f_integral_average_over_a;

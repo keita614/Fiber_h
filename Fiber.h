@@ -32,10 +32,10 @@ using namespace std;
 
 class Fiber {
 private:
-  // =========================================================
+  // ===========================================================================================
   //  1. メンバ変数 (Member Variables)
   //     - クラス全体で使うデータはここにまとめる
-  // =========================================================
+  // ===========================================================================================
   /*! Fiber attributes */
   double _n0; /*!< Refractive index of the fiber core */
   double _n1; /*!< Refractive index of the inner cladding */
@@ -61,9 +61,10 @@ private:
   bool is_table_loaded = false; //読み込み済みフラグ
   const string table_filename = "Initial_a_distribution.txt"; //保存ファイル名
 
-  // =========================================================
+  // ===========================================================================================
   //  2. gslを用いた積分用のstatic関数
-  // =========================================================
+  //      見なくていい。計算内容が気になるなら3を見よ
+  // ===========================================================================================
 
   // 仕様書3章 コア軸からの距離a の関数としてのTrapping Eﬃciency　//
 
@@ -134,7 +135,7 @@ private:
   
   /**
    * 仕様書式(19)の被積分項
-   * zで平均化されたTrapping Effisciency P(a,z)をaで平均化
+   * zで平均化されたTrapping Effisciency P(a,z)をaで平均化するための被積分項
    */
   static double f_integral_average_over_za(double a, void *data) {
     Fiber *fiber = (Fiber *) data;
@@ -142,8 +143,12 @@ private:
     return a*Pa;
   }
 
-  //4.1 Angular Distribution
-  //光子が全反射できるかどうかのチェック。できるなら１を返している
+  // 仕様書6章1節 角度分布 //
+
+  /**
+   * 仕様書式(21)の積分範囲の決定
+   * ∮_Φ(θ)dΦで積分できるなら1をできないなら0を返し擬似的に積分範囲を決定
+   */
   static double check_refrection(double phi, void *data) {
     Fiber *fiber = (Fiber *) data;
     double sinTheta = sin(fiber->GetTheta());
@@ -164,7 +169,10 @@ private:
     else return 1.0;
   }
 
-  //常定pdfの式(22)の計算結果にaをかけ、断面積での平均化に向けた計算
+  /**
+   * 仕様書式(22)の被積分項
+   * Trapping Efficiencyの角度分布dP/dθをファイバー全体で平均化する計算の被積分項
+   */
   static double f_integral_theta_dist_a(double a, void *data) {
     Fiber *fiber = (Fiber *) data;
     double theta = fiber->GetTheta();
@@ -180,6 +188,43 @@ private:
     double dPdt = fiber->dPdt(theta, a, z)*fiber->Get_a_initial_distribution(a);
     return dPdt;
   }
+
+  static double f_integral_escape_dist(double a, void *data){
+    Fiber *fiber = (Fiber *) data;
+    double theta = fiber->GetTheta();
+    double dPdTheta = fiber->dPdTheta(a, theta);
+    double weight = fiber->Escape_angle_distribution(theta, a);
+    return weight*dPdTheta;
+  }
+
+  /*
+   * Komae's (18)
+   */
+  //ファイバーを出ていく光子が中心軸からどれだけ離れているかの計算
+  static double f_aprime(double a, void *data) {
+    Fiber *fiber = (Fiber *) data;
+    double theta = fiber->GetTheta();
+    double phi = fiber->GetPhi();
+    double z = fiber->GetZ();
+    double L = fiber->GetL();
+    double d = fiber->GetD1();
+    double sinphi = sin(phi);
+    double cosphi = cos(phi);
+    double b = sqrt(d*d - a*a*sinphi*sinphi); //光子の反射点から次の反射点までの水平方向の距離の半分
+    double A = (L - z)*tan(theta); //光子の水平方向の総移動距離
+    double ltotal = A + a*cosphi + b; //光子の水平方向の総移動距離
+    double l = 2.0*b;
+    int n = (int) (ltotal/l); //反射回数。少数切り捨て
+    double B = 2.0*n*b; //反射しながら進んだ合計の距離
+    double AB = A - B; //最後の反射が終わった後の、ファイバー終端に達するまでの移動距離
+    double aprime2 = a*a + 2.0*a*cosphi*AB + AB*AB; //ファイバーを出ていく光子が中心軸からどれだけ離れているか
+    return sqrt(aprime2);
+  }
+
+  // ===========================================================================================
+  //  3. gsl以外のprivateな関数
+  //      ここに基本的な物理計算をまとめて記述している
+  // ===========================================================================================
 
   //aの初期位置を決定する分布の平均化
   double Calculate_Raw_Adist(double a, double psiStep = 0.001) {
@@ -266,39 +311,10 @@ private:
     is_table_loaded = true;
   }
 
-  static double f_integral_escape_dist(double a, void *data){
-    Fiber *fiber = (Fiber *) data;
-    double theta = fiber->GetTheta();
-    double dPdTheta = fiber->dPdTheta(a, theta);
-    double weight = fiber->Escape_angle_distribution(theta, a);
-    return weight*dPdTheta;
-  }
-
-  /*
-   * Komae's (18)
-   */
-  //ファイバーを出ていく光子が中心軸からどれだけ離れているかの計算
-  static double f_aprime(double a, void *data) {
-    Fiber *fiber = (Fiber *) data;
-    double theta = fiber->GetTheta();
-    double phi = fiber->GetPhi();
-    double z = fiber->GetZ();
-    double L = fiber->GetL();
-    double d = fiber->GetD1();
-    double sinphi = sin(phi);
-    double cosphi = cos(phi);
-    double b = sqrt(d*d - a*a*sinphi*sinphi); //光子の反射点から次の反射点までの水平方向の距離の半分
-    double A = (L - z)*tan(theta); //光子の水平方向の総移動距離
-    double ltotal = A + a*cosphi + b; //光子の水平方向の総移動距離
-    double l = 2.0*b;
-    int n = (int) (ltotal/l); //反射回数。少数切り捨て
-    double B = 2.0*n*b; //反射しながら進んだ合計の距離
-    double AB = A - B; //最後の反射が終わった後の、ファイバー終端に達するまでの移動距離
-    double aprime2 = a*a + 2.0*a*cosphi*AB + AB*AB; //ファイバーを出ていく光子が中心軸からどれだけ離れているか
-    return sqrt(aprime2);
-  }
-
 public:
+  // ===========================================================================================
+  //  4. コンストラクタの設定とデストラクタ
+  // ===========================================================================================
   /*!
    * Constructor for a fiber
    * @param n0 The refractive index of the fiber core
@@ -336,6 +352,12 @@ public:
     _Latt = Latt;
     _Labs = Labs;
   }  
+  ~Fiber();
+
+  // ===========================================================================================
+  //  5. メンバ変数のセッターとゲッター
+  // ===========================================================================================
+
   /*! Returns the refactive index of the fiber core */
   double GetN0() const { return _n0; }
   /*! Returns the refactive index of the inner cladding */  
@@ -370,6 +392,9 @@ public:
   double GetPatterr() const { return _Patterr; } 
   double GetLightSpeed() const { return 299.792458; } //光速 [mm/ns] 
 
+  // ===========================================================================================
+  //  6. 計算が行われる関数たち
+  // ===========================================================================================
   /**
    * 仕様書式(10)式の計算本体
    * 全反射を起こす時の最大のcosθの計算
@@ -507,8 +532,11 @@ public:
     fclose(fp);
   }
 
-
-  //常定pdfの(22)式の計算の本体, dPdTheta(a, theta)=1/(2π)∫0^(2π) dφ これ大事
+  // 6.1 角度分布 //
+  /**
+   * 仕様書式(21)の計算本体
+   * dP/dθ = 1/2π sinθ ∮_Φ(θ)dΦの計算
+   */
   double dPdTheta(double a, double theta) { 
     gsl_function F;
     F.function = check_refrection;
@@ -521,6 +549,7 @@ public:
     gsl_integration_workspace_free(local_w);
     return result/2/M_PI;
   }
+
   //常定pdfの(22)式の計算結果をファイバーの断面積で平均化する計算
   double dPdTheta(double theta) {
     gsl_function F;
@@ -538,7 +567,6 @@ public:
   }
 
   void Calc_dPdTheta(const char *fileName, double thetaStep = 1.0) {
-
     double theta = 0.0;
     double dTheta = thetaStep*M_PI/180;
     vector<double> v;

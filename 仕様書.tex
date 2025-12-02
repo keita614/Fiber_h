@@ -89,6 +89,32 @@ $\bm{x}_1 = (x_1, y_1, z_1)$におけるファイバー表面での単位法線�
 \Delta \ell &= \left| t_+ - t_- \right| = \frac{2}{\sin \theta} b = \frac{2}{\sin \theta} \sqrt{d^2 - a^2 \sin^2 \phi}. \label{eq:deltaell} 
 \end{align}
 
+\section{ファイバー内で発光する初期位置$a$}
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.7\columnwidth]{Figure/Distribution_of_a.png}
+  \caption{Distribution of Initial Position}
+  \label{fg:Distribution_of_Initial_Position}
+\end{figure}
+実際のファイバーでは、外部から入射してきた光を吸収し、ファイバー内で発光することで光を伝えている。
+この、光が吸収されるまでの距離を吸収長とよび、入射した光の光子数が$1/e$になるまでの距離である。
+この吸収の効果のために、ファイバー内で発光する地点は一様ではない。
+そこで、ある吸収長に対する発光位置のコア軸からの距離$a$の分布考えることにより、擬似的にファイバーの外から光が入射した状況を考える。
+これに関する詳細は、古前壱朗朗氏によって記述された別資料に記載されている。
+その資料によると、ファイバーに対して垂直に入射した光子が吸収される地点$a$の分布関数は次のようになる。
+\begin{equation}
+  \frac{dN}{da} = \frac{2}{l_{abs}} \exp(\frac{-r \cos\psi}{l_{abs}}) \cosh(\frac{\sqrt{a^2-r^2\sin^2\psi}}{l_{abs}}) \frac{a}{\sqrt{a^2-r^2\sin^2\psi}}
+  \label{eq:Initial_Position}
+\end{equation}
+この結果は規格化されたものである。また、$r = 半径、l_{abs} = 吸収長, \psi = ファイバーに入射する光子の角度$である。
+この結果を$\psi$について平均化すると次のようになる。
+ここで具体的な結果が書けないのは、前述の式\ref{eq:Initial_Position}の積分は解析的に行えないためである。
+\begin{equation}
+  \left<\frac{dN}{da}\right>_{\psi} = \int_{0}^{\frac{\pi}{2}} \frac{dN}{da} d\psi
+\end{equation}
+これの$a$分布を表したものが図\ref{fg:Distribution_of_Initial_Position}である。
+以下aで積分を行う際に、この分布を重み付として積分を行うことで吸収の効果を組み込んでいる。
+
 \section{コア軸からの距離$a$の関数としてのTrapping Efficiency}
 \subsection{Single-cladding ファイバー}
 まず、Trapping Efficiencyとは、光ファイバー内で発した光子のうち、全反射を起こしてファイバー内を伝播する光子の割合である。
@@ -159,32 +185,6 @@ Trapping Efficiencyは式\eqref{eq:solidangle1}で与えられるが、式\eqref
 \end{align}
 ここで、$n_m$は最も外側のcladかファイバーを取り囲む周囲の物質（氷など）の屈折率であり、$\psi_m$はそれに対する入射角である。
 $d_2$や$n_{c1}$などの新たな要素が現れるわけではないことに注意していただきたい。
-
-\section{ファイバー内で発光する初期位置$a$}
-実際のファイバーでは、外部から入射してきた光を吸収し、ファイバー内で発光することで光を伝えている。
-この、光が吸収されるまでの距離を吸収長とよび、入射した光の光子数が$1/e$になるまでの距離である。
-この吸収の効果のために、ファイバー内で発光する地点は一様ではない。
-そこで、ある吸収長に対する発光位置のコア軸からの距離$a$の分布考えることにより、擬似的にファイバーの外から光が入射した状況を考える。
-これに関する詳細は、古前壱朗朗氏によって記述された別資料に記載されている。
-その資料によると、ファイバーに対して垂直に入射した光子が吸収される地点$a$の分布関数は次のようになる。
-\begin{equation}
-  \frac{dN}{da} = \frac{2}{l_{abs}} \exp(\frac{-r \cos\psi}{l_{abs}}) \cosh(\frac{\sqrt{a^2-r^2\sin^2\psi}}{l_{abs}}) \frac{a}{\sqrt{a^2-r^2\sin^2\psi}}
-  \label{eq:Initial_Position}
-\end{equation}
-この結果は規格化されたものである。また、$r = 半径、l_{abs} = 吸収長, \psi = ファイバーに入射する光子の角度$である。
-この結果を$\psi$について平均化すると次のようになる。
-ここで具体的な結果が書けないのは、前述の式\ref{eq:Initial_Position}の積分は解析的に行えないためである。
-\begin{equation}
-  \left<\frac{dN}{da}\right>_{\psi} = \int_{0}^{\frac{\pi}{2}} \frac{dN}{da} d\psi
-\end{equation}
-これの$a$分布を表したものが図\ref{fg:Distribution_of_Initial_Position}である。
-\begin{figure}[h]
-  \centering
-  \includegraphics[width=0.7\columnwidth]{Figure/Distribution_of_a.png}
-  \caption{Distribution of Initial Position}
-  \label{fg:Distribution_of_Initial_Position}
-\end{figure}
-以下aで積分を行う際に、この分布を重み付として積分を行うことで吸収の効果を組み込んでいる。
 
 \section{ファイバー端からの距離$z$でのTrapping Efficiency}
 光はファイバー中で減衰し、元の光子数の$1/e$の数に減衰するのに必要な長さを減衰長という。

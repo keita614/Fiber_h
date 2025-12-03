@@ -31,286 +31,6 @@
 using namespace std;
 
 class Fiber {
-private:
-  // ===========================================================================================
-  //  1. メンバ変数 (Member Variables)
-  //     - クラス全体で使うデータはここにまとめる
-  // ===========================================================================================
-  /*! Fiber attributes */
-  double _n0; /*!< Refractive index of the fiber core */
-  double _n1; /*!< Refractive index of the inner cladding */
-  double _n2; /*!< Refractive index of the outer cladding */
-  double _d1; /*!< Radius of the fiber core in [mm] */
-  double _d2; /*!< Outer radius of the inner cladding in [mm] */
-  double _L;  /*!< Fiber length in [mm] */
-  double _Latt; /*!< Fiber attenuation length in [mm] */
-  double _Labs; /*!< Fiber absorption length in [mm] */
-  /*! Temporal variables */
-  double _mu;   /*!< Cosine(Theta) */
-  double _theta;
-  double _phi;  /*!< Azimuthal angle in radians */
-  double _psi;  /*!< Azimuthal angle with respect to the cross-section of the fiber*/
-  double _a;    /*!< Distance from the fiber axis in [mm] */
-  double _z;    /*!< Distance from an edge of the fiber along the axis in [mm] */
-  double _result, _err;
-  double _P, _Perr;
-  double _Patt, _Patterr;
-  /*データをメモリに一時保持するための変数*/
-  vector<double> table_a; //aの値
-  vector<double> table_val; //計算された初期位置分布の値
-  bool is_table_loaded = false; //読み込み済みフラグ
-  const string table_filename = "Initial_a_distribution.txt"; //保存ファイル名
-
-  // ===========================================================================================
-  //  2. gslを用いた積分用のstatic関数
-  //      見なくていい。計算内容が気になるなら3を見よ
-  // ===========================================================================================
-
-  // 仕様書3章 コア軸からの距離a の関数としてのTrapping Eﬃciency　//
-
-  /**
-   * 仕様書式(9)の被積分項
-   * 任意のaに対するTrapping Efficiency P(a)の被積分項を取得
-   */
-  static double f_integral_solidangle(double phi, void *data) {
-    Fiber *fiber = (Fiber *) data;
-    double a = fiber->GetA();  
-    return fiber->Calc_cosThetaMax(phi, a);
-  }
-
-  /**
-   * 仕様書式(11)の被積分項
-   * Trapping Efficiency P(a)をaで積分するための被積分項
-   */
-  static double f_integral_average_over_a(double a, void *data) {
-    Fiber *fiber = (Fiber *) data;
-    double Pa = fiber->Calc_Pa(a);
-    return a*Pa;
-  }
-
-  //　仕様書4章　ファイバー端からの距離z でのTrapping Eﬃciency　//
-
-  /**
-   * 仕様書式(17)の被積分項
-   * 光がファイバー内で減衰する効果を表す項
-   */
-  static double f_integral_mu_att(double mu, void *data) {
-    Fiber *fiber = (Fiber *) data;
-    double L = fiber->GetL();
-    double Latt = fiber->GetLatt();  
-    double z = fiber->GetZ();
-    if (fabs(mu) < 1e-6) return 0;
-    return exp(-(L-z)/mu/Latt);
-  }
-
-  /**
-   * 仕様書式(17)の積分本体
-   * 任意のzでのTrapping Effisciency P(a,z)のμ積分の項
-   * @param z は検出側とは逆のファイバー端からの距離
-   */
-  static double f_integral_phi_att(double phi, void *data) {
-    Fiber *fiber = (Fiber *) data;
-    gsl_function F;
-    F.function = f_integral_mu_att;
-    F.params = data;
-    double a = fiber->GetA();
-    double mumin = fiber->Calc_cosThetaMax(phi, a);
-    double result, err;
-    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
-    gsl_integration_qag(&F, mumin, 1, 0, 1e-6, 1000, GSL_INTEG_GAUSS31, local_w, &result, &err);
-    gsl_integration_workspace_free(local_w); 
-    return result;
-  }
-  
-  /**
-   * 仕様書式(18)の被積分項
-   * 任意のzでのTrapping Effisciency P(a,z)の結果をzで平均化するための被積分項
-   */
-  static double f_integral_average_over_z(double z, void *data) {
-    Fiber *fiber = (Fiber *) data;
-    double a = fiber->GetA();
-    double Paz = fiber->Calc_Paz(a, z);
-    return Paz;
-  }
-  
-  /**
-   * 仕様書式(19)の被積分項
-   * zで平均化されたTrapping Effisciency P(a,z)をaで平均化するための被積分項
-   */
-  static double f_integral_average_over_za(double a, void *data) {
-    Fiber *fiber = (Fiber *) data;
-    double Pa = fiber->Calc_Pa_average_over_z(a);
-    return a*Pa;
-  }
-
-  // 仕様書6章1節 角度分布 //
-
-  /**
-   * 仕様書式(21)の積分範囲の決定
-   * ∮_Φ(θ)dΦで積分できるなら1をできないなら0を返し擬似的に積分範囲を決定
-   */
-  static double check_refrection(double phi, void *data) {
-    Fiber *fiber = (Fiber *) data;
-    double sinTheta = sin(fiber->GetTheta());
-    double sinPhi = sin(phi);
-    double a = fiber->GetA();
-    double d = fiber->GetD1();
-    double cosPsi = sinTheta*sqrt(1.0 - a*a/d/d*sinPhi*sinPhi); //常定pdfの(7)式の計算
-    double sinPsi = sqrt(1.0 - cosPsi*cosPsi); //前式よりsinPsiを計算
-    double nn;
-    //常定pdfの(16)式の計算を場合分けで行なっている
-    if (fiber->GetN2() < 0) { // single cladding
-      nn = fiber->GetN1()/fiber->GetN0();
-    } else {
-      nn = fiber->GetN2()/fiber->GetN0(); // double cladding     
-    }
-    if (sinPsi < nn) return 0.0;
-    //    else return sinTheta;
-    else return 1.0;
-  }
-
-  /**
-   * 仕様書式(22)の被積分項
-   * Trapping Efficiencyの角度分布dP/dθをファイバー全体で平均化する計算の被積分項
-   */
-  static double f_integral_theta_dist_a(double a, void *data) {
-    Fiber *fiber = (Fiber *) data;
-    double theta = fiber->GetTheta();
-    double dPdTheta = fiber->dPdTheta(a, theta) * fiber->Get_a_initial_distribution(a);
-    return dPdTheta;
-  }
-
-  //4.3 Path length and propagation time distributions
-  static double f_integral_a_dist(double a, void *data){
-    Fiber *fiber = (Fiber *) data;
-    double theta = fiber->GetTheta();
-    double z = fiber->GetZ();
-    double dPdt = fiber->dPdt(theta, a, z)*fiber->Get_a_initial_distribution(a);
-    return dPdt;
-  }
-
-  static double f_integral_escape_dist(double a, void *data){
-    Fiber *fiber = (Fiber *) data;
-    double theta = fiber->GetTheta();
-    double dPdTheta = fiber->dPdTheta(a, theta);
-    double weight = fiber->Escape_angle_distribution(theta, a);
-    return weight*dPdTheta;
-  }
-
-  /*
-   * Komae's (18)
-   */
-  //ファイバーを出ていく光子が中心軸からどれだけ離れているかの計算
-  static double f_aprime(double a, void *data) {
-    Fiber *fiber = (Fiber *) data;
-    double theta = fiber->GetTheta();
-    double phi = fiber->GetPhi();
-    double z = fiber->GetZ();
-    double L = fiber->GetL();
-    double d = fiber->GetD1();
-    double sinphi = sin(phi);
-    double cosphi = cos(phi);
-    double b = sqrt(d*d - a*a*sinphi*sinphi); //光子の反射点から次の反射点までの水平方向の距離の半分
-    double A = (L - z)*tan(theta); //光子の水平方向の総移動距離
-    double ltotal = A + a*cosphi + b; //光子の水平方向の総移動距離
-    double l = 2.0*b;
-    int n = (int) (ltotal/l); //反射回数。少数切り捨て
-    double B = 2.0*n*b; //反射しながら進んだ合計の距離
-    double AB = A - B; //最後の反射が終わった後の、ファイバー終端に達するまでの移動距離
-    double aprime2 = a*a + 2.0*a*cosphi*AB + AB*AB; //ファイバーを出ていく光子が中心軸からどれだけ離れているか
-    return sqrt(aprime2);
-  }
-
-  // ===========================================================================================
-  //  3. gsl以外のprivateな関数
-  //      ここに基本的な物理計算をまとめて記述している
-  // ===========================================================================================
-
-  //aの初期位置を決定する分布の平均化
-  double Calculate_Raw_Adist(double a, double psiStep = 0.001) {
-    double psi = 0.0;
-    double dPsi = psiStep * M_PI / 180.0;
-    double sum_Adist = 0.0;
-    double sum_weight = 0.0;
-
-    while (psi < M_PI / 2.0) {
-      SetA(a);
-      SetPsi(psi);
-      double r = GetD1();
-      double l_abs = GetLabs();
-      double s = sin(psi);
-      double c = cos(psi);
-      
-      double Adist_val = 0.0;
-      double root_arg = a*a - r*r*s*s;
-      
-      if (root_arg >= 0) {
-        double root = sqrt(root_arg);
-        if (root < 1e-5) { // 閾値を現実的な値に広げる
-          return 0.0;
-        }
-          double ch = cosh(root/l_abs);
-          Adist_val = 2.0/l_abs * exp(-r*c/l_abs) * ch * a / root;
-      }
-      
-      double weight = (psi > 0.0) ? dPsi : 0.0;
-      sum_Adist += Adist_val * weight;
-      sum_weight += weight;
-      psi += dPsi;
-    }
-    return (sum_weight > 0) ? (sum_Adist / sum_weight) : 0.0;
-  }
-
-  // Initial_a_distribution.txtの準備
-  void PrepareTable() {
-    if (is_table_loaded) return;
-
-    // ファイル存在確認
-    struct stat buffer;
-    bool file_exists = (stat(table_filename.c_str(), &buffer) == 0); //stat()でファイルの存在を確認 → .c_str()でstring 文字列を、C言語形式の文字列（char*）に変換
-
-    // ファイルがない場合のみ作成 (重い処理はここだけ)
-    if (!file_exists) {
-      cout << "Generating table file: " << table_filename << " ..." << endl; //printfみたいなもん。左から順番に出力され、endlで改行
-      ofstream outfile(table_filename);
-      outfile << "# a  Initial_a_distribution_Mean" << endl;
-
-      double a = 0.0;
-      double limit = GetD1();
-      double step = 0.00001; // 精度が必要なら細かくする
-
-      while (a < limit) {
-          double val = Calculate_Raw_Adist(a); // 重い計算を実行
-          outfile << a << " " << val << endl;
-          a += step;
-      }
-      outfile.close();
-      cout << "Generation completed." << endl;
-    }
-
-    // ファイル読み込み (メモリへの展開)
-    ifstream infile(table_filename);
-    if (!infile) {
-      cerr << "Error: Cannot open table file." << endl;
-      return;
-    }
-
-    double t_a, t_val;
-    string line;
-    table_a.clear();
-    table_val.clear();
-
-    while (getline(infile, line)) { //ファイルから「1行まるごと」文字列として読み込み
-      if (line.empty() || line[0] == '#') continue;
-      stringstream ss(line); //読み込んだファイルを文字列ストリームに変換
-      if (ss >> t_a >> t_val) {
-        table_a.push_back(t_a);
-        table_val.push_back(t_val);
-      }
-    }
-    is_table_loaded = true;
-  }
-
 public:
   // ===========================================================================================
   //  4. コンストラクタの設定とデストラクタ
@@ -396,7 +116,7 @@ public:
   //  6. 計算が行われる関数たち
   // ===========================================================================================
   /**
-   * 仕様書式(10)式の計算本体
+   * 仕様書式(12)式の計算本体
    * 全反射を起こす時の最大のcosθの計算
    * @param phi は方位角[rad]
    * @param a はコア軸からの距離
@@ -415,7 +135,7 @@ public:
   }
 
   /*!
-   * 仕様書式(9)式の積分本体
+   * 仕様書式(11)式の積分本体
    * 任意のaに対するTrapping Efficiency P(a)の計算。
    */
   double Calc_Pa(double a) {
@@ -433,7 +153,7 @@ public:
   }
 
   /**
-   * 仕様書式(10)式の積分本体
+   * 仕様書式(13)式の積分本体
    * Trapping Efficiency P(a)をaで平均化する計算
    */
   double Calc_P_average_over_a() {
@@ -448,6 +168,7 @@ public:
     _Perr = 2.0*err/_d1/_d1;
     return 2.0*result/_d1/_d1;
   }
+
   /*!
    * Calculate the trapping efficiency P(a, z) using the equation (18).
    * Convergence is most severe.
@@ -469,6 +190,7 @@ public:
     _err = err/4/M_PI;  
     return result/4/M_PI;  
   }
+
   /*!
    * Calculate Patt(a) at a given "a" by equation (19).
    * @param a The off-axis distance at the photon emission point in [mm]
@@ -533,6 +255,7 @@ public:
   }
 
   // 6.1 角度分布 //
+
   /**
    * 仕様書式(21)の計算本体
    * dP/dθ = 1/2π sinθ ∮_Φ(θ)dΦの計算
@@ -1046,6 +769,298 @@ public:
     fclose(fp);
   }
 
+private:
+  // ===========================================================================================
+  //  1. メンバ変数 (Member Variables)
+  //     - クラス全体で使うデータはここにまとめる
+  // ===========================================================================================
+  /*! Fiber attributes */
+  double _n0; /*!< Refractive index of the fiber core */
+  double _n1; /*!< Refractive index of the inner cladding */
+  double _n2; /*!< Refractive index of the outer cladding */
+  double _d1; /*!< Radius of the fiber core in [mm] */
+  double _d2; /*!< Outer radius of the inner cladding in [mm] */
+  double _L;  /*!< Fiber length in [mm] */
+  double _Latt; /*!< Fiber attenuation length in [mm] */
+  double _Labs; /*!< Fiber absorption length in [mm] */
+  /*! Temporal variables */
+  double _mu;   /*!< Cosine(Theta) */
+  double _theta;
+  double _phi;  /*!< Azimuthal angle in radians */
+  double _psi;  /*!< Azimuthal angle with respect to the cross-section of the fiber*/
+  double _a;    /*!< Distance from the fiber axis in [mm] */
+  double _z;    /*!< Distance from an edge of the fiber along the axis in [mm] */
+  double _result, _err;
+  double _P, _Perr;
+  double _Patt, _Patterr;
+  /*データをメモリに一時保持するための変数*/
+  vector<double> table_a; //aの値
+  vector<double> table_val; //計算された初期位置分布の値
+  bool is_table_loaded = false; //読み込み済みフラグ
+  const string table_filename = "Initial_a_distribution.txt"; //保存ファイル名
+
+  // ===========================================================================================
+  //  2. gslを用いた積分用のstatic関数
+  //      見なくていい、理解したいなら頑張れ
+  // ===========================================================================================
+
+  // 仕様書4章 コア軸からの距離a の関数としてのTrapping Eﬃciency　//
+
+  /**
+   * 仕様書式(11)の被積分項
+   * 任意のaに対するTrapping Efficiency P(a)の被積分項を取得
+   */
+  static double f_integral_solidangle(double phi, void *data) {
+    Fiber *fiber = (Fiber *) data;
+    double a = fiber->GetA();  
+    return fiber->Calc_cosThetaMax(phi, a);
+  }
+
+  /**
+   * 仕様書式(13)の被積分項
+   * Trapping Efficiency P(a)をaで積分するための被積分項
+   */
+  static double f_integral_average_over_a(double a, void *data) {
+    Fiber *fiber = (Fiber *) data;
+    double Pa = fiber->Calc_Pa(a);
+    return a*Pa;
+  }
+
+  //　仕様書5章　ファイバー端からの距離z でのTrapping Eﬃciency　//
+
+  /**
+   * 仕様書式(19)の被積分項
+   * 光がファイバー内で減衰する効果を表す項
+   */
+  static double f_integral_mu_att(double mu, void *data) {
+    Fiber *fiber = (Fiber *) data;
+    double L = fiber->GetL();
+    double Latt = fiber->GetLatt();  
+    double z = fiber->GetZ();
+    if (fabs(mu) < 1e-6) return 0;
+    return exp(-(L-z)/mu/Latt);
+  }
+
+  /**
+   * 仕様書式(19)の積分本体
+   * 任意のzでのTrapping Effisciency P(a,z)のμ積分の項
+   * @param z は検出側とは逆のファイバー端からの距離
+   */
+  static double f_integral_phi_att(double phi, void *data) {
+    Fiber *fiber = (Fiber *) data;
+    gsl_function F;
+    F.function = f_integral_mu_att;
+    F.params = data;
+    double a = fiber->GetA();
+    double mumin = fiber->Calc_cosThetaMax(phi, a);
+    double result, err;
+    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
+    gsl_integration_qag(&F, mumin, 1, 0, 1e-6, 1000, GSL_INTEG_GAUSS31, local_w, &result, &err);
+    gsl_integration_workspace_free(local_w); 
+    return result;
+  }
+  
+  /**
+   * 仕様書式(20)の被積分項
+   * 任意のzでのTrapping Effisciency P(a,z)の結果をzで平均化するための被積分項
+   */
+  static double f_integral_average_over_z(double z, void *data) {
+    Fiber *fiber = (Fiber *) data;
+    double a = fiber->GetA();
+    double Paz = fiber->Calc_Paz(a, z);
+    return Paz;
+  }
+  
+  /**
+   * 仕様書式(21)の被積分項
+   * zで平均化されたTrapping Effisciency P(a,z)をaで平均化するための被積分項
+   */
+  static double f_integral_average_over_za(double a, void *data) {
+    Fiber *fiber = (Fiber *) data;
+    double Pa = fiber->Calc_Pa_average_over_z(a);
+    return a*Pa;
+  }
+
+  // 仕様書6章1節 角度分布 //
+
+  /**
+   * 仕様書式(22)の積分範囲の決定
+   * ∮_Φ(θ)dΦで積分できるなら1をできないなら0を返し擬似的に積分範囲を決定
+   */
+  static double check_refrection(double phi, void *data) {
+    Fiber *fiber = (Fiber *) data;
+    double sinTheta = sin(fiber->GetTheta());
+    double sinPhi = sin(phi);
+    double a = fiber->GetA();
+    double d = fiber->GetD1();
+    double cosPsi = sinTheta*sqrt(1.0 - a*a/d/d*sinPhi*sinPhi); //常定pdfの(7)式の計算
+    double sinPsi = sqrt(1.0 - cosPsi*cosPsi); //前式よりsinPsiを計算
+    double nn;
+    //常定pdfの(16)式の計算を場合分けで行なっている
+    if (fiber->GetN2() < 0) { // single cladding
+      nn = fiber->GetN1()/fiber->GetN0();
+    } else {
+      nn = fiber->GetN2()/fiber->GetN0(); // double cladding     
+    }
+    if (sinPsi < nn) return 0.0;
+    //    else return sinTheta;
+    else return 1.0;
+  }
+
+  /**
+   * 仕様書式(23)の被積分項
+   * Trapping Efficiencyの角度分布dP/dθをファイバー全体で平均化する計算の被積分項
+   */
+  static double f_integral_theta_dist_a(double a, void *data) {
+    Fiber *fiber = (Fiber *) data;
+    double theta = fiber->GetTheta();
+    double dPdTheta = fiber->dPdTheta(a, theta) * fiber->Get_a_initial_distribution(a);
+    return dPdTheta;
+  }
+
+  // 仕様書6章3節 //
+
+  /**
+   * 仕様書式(31)の被積分項
+   * Trapping Efficiencyの時間分布dP/dtをθで平均化する計算の被積分項
+   */
+  static double f_integral_a_dist(double a, void *data){
+    Fiber *fiber = (Fiber *) data;
+    double theta = fiber->GetTheta();
+    double z = fiber->GetZ();
+    double dPdt = fiber->dPdt(theta, a, z)*fiber->Get_a_initial_distribution(a);
+    return dPdt;
+  }
+
+  // 仕様書6章5節
+  /**
+   * 仕様書式()　＜ーちゃんと式かけ
+   * ファイバー端から脱出する光の分布をTrapping Efficiencyのθ分布から計算し、それをaで平均化する計算の被積分項
+   */
+  static double f_integral_escape_dist(double a, void *data){
+    Fiber *fiber = (Fiber *) data;
+    double theta = fiber->GetTheta();
+    double dPdTheta = fiber->dPdTheta(a, theta);
+    double weight = fiber->Escape_angle_distribution(theta, a);
+    return weight*dPdTheta;
+  }
+
+  // 未記載 //
+  /*
+   * Komae's (18)
+   */
+  //ファイバーを出ていく光子が中心軸からどれだけ離れているかの計算
+  static double f_aprime(double a, void *data) {
+    Fiber *fiber = (Fiber *) data;
+    double theta = fiber->GetTheta();
+    double phi = fiber->GetPhi();
+    double z = fiber->GetZ();
+    double L = fiber->GetL();
+    double d = fiber->GetD1();
+    double sinphi = sin(phi);
+    double cosphi = cos(phi);
+    double b = sqrt(d*d - a*a*sinphi*sinphi); //光子の反射点から次の反射点までの水平方向の距離の半分
+    double A = (L - z)*tan(theta); //光子の水平方向の総移動距離
+    double ltotal = A + a*cosphi + b; //光子の水平方向の総移動距離
+    double l = 2.0*b;
+    int n = (int) (ltotal/l); //反射回数。少数切り捨て
+    double B = 2.0*n*b; //反射しながら進んだ合計の距離
+    double AB = A - B; //最後の反射が終わった後の、ファイバー終端に達するまでの移動距離
+    double aprime2 = a*a + 2.0*a*cosphi*AB + AB*AB; //ファイバーを出ていく光子が中心軸からどれだけ離れているか
+    return sqrt(aprime2);
+  }
+
+  // ===========================================================================================
+  //  3. gsl以外のprivateな関数
+  //      ここも見なくていいが、そこそこ計算がまとまっているので、ガッツリ利用するのであれば理解した方がいい
+  // ===========================================================================================
+
+  // 仕様書3章 //
+  
+  //aの初期位置を決定する分布の平均化
+  double Calculate_Raw_Adist(double a, double psiStep = 0.001) {
+    double psi = 0.0;
+    double dPsi = psiStep * M_PI / 180.0;
+    double sum_Adist = 0.0;
+    double sum_weight = 0.0;
+
+    while (psi < M_PI / 2.0) {
+      SetA(a);
+      SetPsi(psi);
+      double r = GetD1();
+      double l_abs = GetLabs();
+      double s = sin(psi);
+      double c = cos(psi);
+      
+      double Adist_val = 0.0;
+      double root_arg = a*a - r*r*s*s;
+      
+      if (root_arg >= 0) {
+        double root = sqrt(root_arg);
+        if (root < 1e-5) { // 閾値を現実的な値に広げる
+          return 0.0;
+        }
+          double ch = cosh(root/l_abs);
+          Adist_val = 2.0/l_abs * exp(-r*c/l_abs) * ch * a / root;
+      }
+      
+      double weight = (psi > 0.0) ? dPsi : 0.0;
+      sum_Adist += Adist_val * weight;
+      sum_weight += weight;
+      psi += dPsi;
+    }
+    return (sum_weight > 0) ? (sum_Adist / sum_weight) : 0.0;
+  }
+
+  // Initial_a_distribution.txtの準備
+  void PrepareTable() {
+    if (is_table_loaded) return;
+
+    // ファイル存在確認
+    struct stat buffer;
+    bool file_exists = (stat(table_filename.c_str(), &buffer) == 0); //stat()でファイルの存在を確認 → .c_str()でstring 文字列を、C言語形式の文字列（char*）に変換
+
+    // ファイルがない場合のみ作成 (重い処理はここだけ)
+    if (!file_exists) {
+      cout << "Generating table file: " << table_filename << " ..." << endl; //printfみたいなもん。左から順番に出力され、endlで改行
+      ofstream outfile(table_filename);
+      outfile << "# a  Initial_a_distribution_Mean" << endl;
+
+      double a = 0.0;
+      double limit = GetD1();
+      double step = 0.00001; // 精度が必要なら細かくする
+
+      while (a < limit) {
+          double val = Calculate_Raw_Adist(a); // 重い計算を実行
+          outfile << a << " " << val << endl;
+          a += step;
+      }
+      outfile.close();
+      cout << "Generation completed." << endl;
+    }
+
+    // ファイル読み込み (メモリへの展開)
+    ifstream infile(table_filename);
+    if (!infile) {
+      cerr << "Error: Cannot open table file." << endl;
+      return;
+    }
+
+    double t_a, t_val;
+    string line;
+    table_a.clear();
+    table_val.clear();
+
+    while (getline(infile, line)) { //ファイルから「1行まるごと」文字列として読み込み
+      if (line.empty() || line[0] == '#') continue;
+      stringstream ss(line); //読み込んだファイルを文字列ストリームに変換
+      if (ss >> t_a >> t_val) {
+        table_a.push_back(t_a);
+        table_val.push_back(t_val);
+      }
+    }
+    is_table_loaded = true;
+  }
 };
 
 #endif

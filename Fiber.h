@@ -115,6 +115,8 @@ public:
   //  3. 計算が行われる関数たち
   // ===========================================================================================
 
+  // 仕様書3章 //
+
   /**
    * 仕様書式(10)の計算本体
    * dN/daをψで平均化したものの分布を確認することができる
@@ -133,24 +135,7 @@ public:
     fclose(fp);
   }
 
-  /**
-   * 仕様書式(12)式の計算本体
-   * 全反射を起こす時の最大のcosθの計算
-   * @param phi は方位角[rad]
-   * @param a はコア軸からの距離
-   */
-  double Calc_cosThetaMax(double phi, double a) {
-    double sinphi = sin(phi);
-    double sin2thetamax;    
-    if (_n2 < 0) { // single cladding
-      sin2thetamax = (1.0 - _n1*_n1/_n0/_n0)/(1 - a*a*sinphi*sinphi/_d1/_d1);
-    } else {   // double cladding
-      sin2thetamax = (1.0 - _n2*_n2/_n0/_n0)/(1 - a*a*sinphi*sinphi/_d1/_d1);
-    }
-    if (sin2thetamax > 1.0) return 0.0;
-    double costhetamax = sqrt(1.0 - sin2thetamax);
-    return costhetamax;
-  }
+  // 仕様書4章 //
 
   /*!
    * 仕様書式(11)式の積分本体
@@ -1034,25 +1019,6 @@ private:
     gsl_integration_workspace_free(local_w);
     return result;
   }
-  
-  //aの初期位置を決定する分布の平均化
-  double Calculate_Raw_Adist(double a, double psiStep = 0.001) {
-    double psi = 0.0;
-    double dPsi = psiStep * M_PI / 180.0;
-    double sum_Adist = 0.0;
-    double sum_weight = 0.0;
-
-    while (psi < M_PI / 2.0) {
-      SetA(a);
-      double Adist_val = a_dist_with_abs(a, psi);
-      
-      double weight = (psi > 0.0) ? dPsi : 0.0;
-      sum_Adist += Adist_val * weight;
-      sum_weight += weight;
-      psi += dPsi;
-    }
-    return (sum_weight > 0) ? (sum_Adist / sum_weight) : 0.0;
-  }
 
   // Initial_a_distribution.txtの準備
   void PrepareTable() {
@@ -1073,7 +1039,7 @@ private:
       double step = 0.00001; // 精度が必要なら細かくする
 
       while (a < limit) {
-          double val = Calculate_Raw_Adist(a); // 重い計算を実行
+          double val = Calc_a_dist_over_psi(a); // 重い計算を実行
           outfile << a << " " << val << endl;
           a += step;
       }
@@ -1102,6 +1068,27 @@ private:
       }
     }
     is_table_loaded = true;
+  }
+
+  // 仕様書4章
+
+  /**
+   * 仕様書式(12)式の計算本体
+   * 全反射を起こす時の最大のcosθの計算
+   * @param phi は方位角[rad]
+   * @param a はコア軸からの距離
+   */
+  double Calc_cosThetaMax(double phi, double a) {
+    double sinphi = sin(phi);
+    double sin2thetamax;    
+    if (_n2 < 0) { // single cladding
+      sin2thetamax = (1.0 - _n1*_n1/_n0/_n0)/(1 - a*a*sinphi*sinphi/_d1/_d1);
+    } else {   // double cladding
+      sin2thetamax = (1.0 - _n2*_n2/_n0/_n0)/(1 - a*a*sinphi*sinphi/_d1/_d1);
+    }
+    if (sin2thetamax > 1.0) return 0.0;
+    double costhetamax = sqrt(1.0 - sin2thetamax);
+    return costhetamax;
   }
 };
 

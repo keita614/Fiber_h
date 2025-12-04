@@ -33,7 +33,7 @@ using namespace std;
 class Fiber {
 public:
   // ===========================================================================================
-  //  4. コンストラクタの設定とデストラクタ
+  //  1. コンストラクタの設定
   // ===========================================================================================
   /*!
    * Constructor for a fiber
@@ -72,10 +72,9 @@ public:
     _Latt = Latt;
     _Labs = Labs;
   }  
-  ~Fiber();
 
   // ===========================================================================================
-  //  5. メンバ変数のセッターとゲッター
+  //  2. メンバ変数のセッターとゲッター
   // ===========================================================================================
 
   /*! Returns the refactive index of the fiber core */
@@ -113,8 +112,27 @@ public:
   double GetLightSpeed() const { return 299.792458; } //光速 [mm/ns] 
 
   // ===========================================================================================
-  //  6. 計算が行われる関数たち
+  //  3. 計算が行われる関数たち
   // ===========================================================================================
+
+  /**
+   * 仕様書式(10)の計算本体
+   * dN/daをψで平均化したものの分布を確認することができる
+   * @param psi はファイバー軸に垂直な軸からの角度である
+   */
+  void Check_a_dist(const char *fileName, double aStep = 0.005){
+    FILE *fp = fopen(fileName, "w");
+    double a = 0.0; 
+    double dA = aStep;
+    while(a < GetD1()){
+      double Adist = Calc_a_dist_over_psi(a);
+      fprintf(fp, "%f %f\n", a, Adist);
+      printf("Finished a %f mm\n", a);
+      a += dA;
+    }
+    fclose(fp);
+  }
+
   /**
    * 仕様書式(12)式の計算本体
    * 全反射を起こす時の最大のcosθの計算
@@ -696,20 +714,6 @@ public:
     return y1 + (a - x1) * (y2 - y1) / (x2 - x1);
   }
 
-  void Check_a_dist(const char *fileName, double psiStep = 1, double aStep = 0.005){
-    FILE *fp = fopen(fileName, "w");
-    double psi = 0.0;
-    double a = 0.0; 
-    double dA = aStep;
-    while(a < GetD1()){
-      double Adist = Calculate_Raw_Adist(a, psi);
-      fprintf(fp, "%f %f\n", a, Adist);
-      printf("Finished a %f mm\n", a);
-      a += dA;
-    }
-    fclose(fp);
-  }
-
   //Escap angle Distribution
   double Escape_angle_distribution(double theta, double a){
     double n_ice = 1.309;
@@ -803,6 +807,18 @@ private:
   //  2. gslを用いた積分用のstatic関数
   //      見なくていい、理解したいなら頑張れ
   // ===========================================================================================
+
+  // 仕様書3章　ファイバー内で発光する初期位置a //
+
+  /**
+   * 仕様書式(10)の被積分項
+   * aの初期位置の分布dN/daをについて、ファイバーへの入射角ψで平均化したもの
+   */
+  static double f_integral_a_dist_over_psi(double psi, void *data){
+    Fiber *fiber = (Fiber *) data;
+    double a = fiber->GetA();
+    return fiber->a_dist_with_abs(a, psi);
+  }
 
   // 仕様書4章 コア軸からの距離a の関数としてのTrapping Eﬃciency　//
 
@@ -976,6 +992,48 @@ private:
   // ===========================================================================================
 
   // 仕様書3章 //
+
+  /**
+   * 仕様書式(9)の計算
+   * absorptionの効果を入れた発光点の初期位置の分布の計算
+   */
+  inline double a_dist_with_abs(double a, double psi){
+    double r = GetD1();
+    double l_abs = GetLabs();
+    double s = sin(psi);
+    double c = cos(psi);
+    double Adist_val;
+    double root_arg = a*a - r*r*s*s;
+    if (root_arg <= 0){return 0.0:}
+    double root = sqrt(root_arg);
+    double ch = cosh(root/l_abs);
+    return Adist_val = 2.0/l_abs * exp(-r*c/l_abs) * ch * a / root;
+  }
+
+  /**
+   * 仕様書式(10)の積分本体
+   * aの初期位置の分布dN/daをについて、ファイバーへの入射角ψで平均化したもの
+   */
+  double Calc_a_dist_over_psi(double a){
+    SetA(a);
+    double upper_limit;
+    double r = GetD1();
+    if (a >= r) {
+        upper_limit = M_PI / 2.0; // aがrより大きければ常時正なので90度まで積分
+    } else {
+        upper_limit = asin(a / r); // 限界角度まで積分
+    }
+    gsl_function F;
+    F.function = f_integral_a_dist_over_psi;
+    F.params = this;
+    double result, err;
+    double epsabs = 1e-10; // 絶対誤差の許容値
+    double epsrel = 1e-5;  // 相対誤差の許容値
+    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
+    gsl_integration_qag(&F, 0, M_PI/2, epsabs, epsrel, 1000, GSL_INTEG_GAUSS41, local_w, &result, &err);
+    gsl_integration_workspace_free(local_w);
+    return result;
+  }
   
   //aの初期位置を決定する分布の平均化
   double Calculate_Raw_Adist(double a, double psiStep = 0.001) {
@@ -986,23 +1044,7 @@ private:
 
     while (psi < M_PI / 2.0) {
       SetA(a);
-      SetPsi(psi);
-      double r = GetD1();
-      double l_abs = GetLabs();
-      double s = sin(psi);
-      double c = cos(psi);
-      
-      double Adist_val = 0.0;
-      double root_arg = a*a - r*r*s*s;
-      
-      if (root_arg >= 0) {
-        double root = sqrt(root_arg);
-        if (root < 1e-5) { // 閾値を現実的な値に広げる
-          return 0.0;
-        }
-          double ch = cosh(root/l_abs);
-          Adist_val = 2.0/l_abs * exp(-r*c/l_abs) * ch * a / root;
-      }
+      double Adist_val = a_dist_with_abs(a, psi);
       
       double weight = (psi > 0.0) ? dPsi : 0.0;
       sum_Adist += Adist_val * weight;

@@ -114,6 +114,7 @@ $\bm{x}_1 = (x_1, y_1, z_1)$におけるファイバー表面での単位法線�
 \end{equation}
 これの$a$分布を表したものが図\ref{fg:Distribution_of_Initial_Position}である。
 以下aで積分を行う際に、この分布を重み付として積分を行うことで吸収の効果を組み込んでいる。
+もし$a$が一様に分布する場合を考えたいのであれば、$\left<\frac{dN}{da}\right>_{\psi}=a$と置き換えて計算すれば良い。
 
 \section{コア軸からの距離$a$の関数としてのTrapping Efficiency}
 \subsection{Single-cladding ファイバー}
@@ -135,7 +136,7 @@ $\mumin(\phi, a)$は式\eqref{eq:cospsic2}のように計算される。
 式\eqref{eq:solidangle1}の積分は数値積分により計算され、その結果が図\ref{fig:trapp_eff}である。
 Trapping Efficiencyをコア軸からの距離$a$で平均化する計算は次の式で行われる。
 \begin{align}
-  \left<P\right> &= \frac{1}{\pi d^2} \int_0^{d} 2 \pi a P(a) \, da. \label{eq:Pd1}
+  \left<P\right> &= \frac{1}{\pi d^2} \int_0^{d} 2 \pi \left<\frac{dN}{da}\right>_{\psi} P(a) \, da. \label{eq:Pd1}
 \end{align}
 Single-claddingファイバーの$n_0 = 1.59, n_1 = 1.49$と$d = 0.48$ mmに対して、$\left<P\right> = 0.061$と計算される。
 これは図\ref{fig:trapp_eff}の水平な線と\ref{tab:my_label}の値を記されている。
@@ -201,7 +202,7 @@ $d_2$や$n_{c1}$などの新たな要素が現れるわけではないことに�
 
 光が体積$V = \pi d^2 L$の中で一様かつ等方的に発せられた場合、Trapping Efficiencyは次のように計算される。
 \begin{align}
-  \left<P_{\mathrm{att}}\right> &= \frac{1}{V} \int_V P(a, z) \, dV = \frac{1}{\pi d^2} \int_0^d 2 \pi a P_{\mathrm{att}}(a) \left<\frac{dN}{da}\right>_{\psi} \, da \label{eq:P-aveaz}
+  \left<P_{\mathrm{att}}\right> &= \frac{1}{V} \int_V P(a, z) \, dV = \frac{1}{\pi d^2} \int_0^d 2 \pi P_{\mathrm{att}}(a) \left<\frac{dN}{da}\right>_{\psi} \, da \label{eq:P-aveaz}
 \end{align}
 
 \begin{table}
@@ -238,7 +239,7 @@ Double & $1.59$ & $1.49$ & $1.42$ & $0.10120 \pm 0.00000$ & $0.08438 \pm 0.00001
 体積$V = \pi d^2 L$のファイバー内で一様かつ等方的に発せられる光に対して、微小体積$dV = 2 \pi a \, da \, dz$で平均化すると、ファイバー端における平均角度分布は次のように表される。
 \begin{align}
   \left< \frac{dP(\theta)}{d\theta} \right> &= \frac{1}{V} \int_V \frac{dP(a, \theta)}{d\theta} \exp \left( -\frac{L - z}{\cos \theta \Latt} \right) \left<\frac{dN}{da}\right>_{\psi} \, dV \nonumber \\
-  &= A(\theta) \int_0^d 2 \pi a \frac{dP(a, \theta)}{d\theta}  \left<\frac{dN}{da}\right>_{\psi} \, da. \label{eq:dPdtheta-aveV}\\
+  &= A(\theta) \int_0^d 2 \pi \frac{dP(a, \theta)}{d\theta}  \left<\frac{dN}{da}\right>_{\psi} \, da. \label{eq:dPdtheta-aveV}\\
   A(\theta) &\equiv \frac{\cos \theta \Latt}{V} \left( 1 - \exp \left( -\frac{L}{\cos \theta \Latt} \right)\right)  \nonumber
 \end{align}
 この計算結果は図\ref{fig:Trapping_Efficiency_Theta}に示されている。
@@ -247,7 +248,7 @@ Double & $1.59$ & $1.49$ & $1.42$ & $0.10120 \pm 0.00000$ & $0.08438 \pm 0.00001
 角度分布の式\eqref{eq:dPdtheta}と式\eqref{eq:dPdtheta-aveV}は次のように表すことができる。
 \begin{align}
    \frac{dP(a, \theta)}{d \cos \theta} &= \frac{dP(a, \theta)}{d \theta} \frac{d \theta}{d \cos \theta} = -\frac{1}{\sin \theta}\frac{dP(a, \theta)}{d \theta} = -\frac{1}{2 \pi} \int_{\Phi(\theta)}  \, d \phi, \label{eq:dPdcostheta} \\
-     \left< \frac{dP(\theta)}{d\cos\theta} \right> &= \frac{1}{V} \int_V \frac{dP(a, \theta)}{d\cos\theta} \exp \left( -\frac{L - z}{\cos \theta \Latt} \right) \left<\frac{dN}{da}\right>_{\psi} \, dV = A(\theta) \int_0^d 2 \pi a \frac{dP(a, \theta)}{d\cos\theta} \left<\frac{dN}{da}\right>_{\psi} \, da \label{eq:dPdcostheta-aveV}
+     \left< \frac{dP(\theta)}{d\cos\theta} \right> &= \frac{1}{V} \int_V \frac{dP(a, \theta)}{d\cos\theta} \exp \left( -\frac{L - z}{\cos \theta \Latt} \right) \left<\frac{dN}{da}\right>_{\psi} \, dV = A(\theta) \int_0^d 2 \pi \frac{dP(a, \theta)}{d\cos\theta} \left<\frac{dN}{da}\right>_{\psi} \, da \label{eq:dPdcostheta-aveV}
 \end{align}
 ここで、$\cos\theta$は光の移動距離$\ell(z, \, \theta)$へと次の式のように対応することができる。
 \begin{align}
@@ -264,8 +265,8 @@ Double & $1.59$ & $1.49$ & $1.42$ & $0.10120 \pm 0.00000$ & $0.08438 \pm 0.00001
 同様にしてTrapping Efficiencyの移動距離をコア軸からの距離$a$とファイバー端からの距離$z$で平均化したものを考えると
 \begin{align}
    \left< \frac{dP(\theta)}{d\ell} \right> &= \frac{1}{V} \int_V \frac{dP(a, \theta)}{d\cos\theta} \frac{d\cos\theta}{d\ell} \exp \left( -\frac{L - z}{\cos \theta \Latt} \right) \left<\frac{dN}{da}\right>_{\psi}\, dV \nonumber \\
-   &= \frac{1}{V} \exp \left( -\frac{\ell}{\Latt} \right)  \int_0^L \frac{z-L}{\ell^2} \,  dz \int_0^d 2 \pi a  \frac{dP(a, \theta)}{d\cos\theta} \left<\frac{dN}{da}\right>_{\psi} \, da \nonumber \\
-  &= B(\theta) \int_0^d 2 \pi a  \frac{dP(a, \theta)}{d\cos\theta} \left<\frac{dN}{da}\right>_{\psi} \, da
+   &= \frac{1}{V} \exp \left( -\frac{\ell}{\Latt} \right)  \int_0^L \frac{z-L}{\ell^2} \,  dz \int_0^d 2 \pi \frac{dP(a, \theta)}{d\cos\theta} \left<\frac{dN}{da}\right>_{\psi} \, da \nonumber \\
+   &= B(\theta) \int_0^d 2 \pi a  \frac{dP(a, \theta)}{d\cos\theta} \left<\frac{dN}{da}\right>_{\psi} \, da
   \label{eq:dPdell-aveV}\\
   B(\theta) &\equiv  \frac{1}{V} \frac{\sin \theta \Latt}{\cos \theta}  \left( \cos \theta \Latt - e^{-L/\cos \theta \Latt} (\cos \theta \Latt + L) \right) \nonumber
 \end{align}
@@ -334,12 +335,12 @@ Geant4の計算では$z$を固定しているため、$z$を固定して計算�
 よって、Trapping Efficiencyの時間分布はその$\cos^{-1}(\theta) = \sec(\theta)$分布と似たような形になると思われる。
 そこで、Trapping Efficiencyのsec分布を考える。式\eqref{eq:dPdtheta-aveV}より、secの分布は次の式に従う。
 \begin{equation}
-  \frac{dP}{d\frac{1}{\cos\theta}} = \frac{\cos^2\theta}{\sin\theta}\frac{dP}{d\theta} = \frac{\cos^2\theta}{\sin\theta}A(\theta) \int_0^d 2 \pi a \frac{dP(a, \theta)}{d\theta} \left<\frac{dN}{da}\right>_{\psi} da
+  \frac{dP}{d\frac{1}{\cos\theta}} = \frac{\cos^2\theta}{\sin\theta}\frac{dP}{d\theta} = \frac{\cos^2\theta}{\sin\theta}A(\theta) \int_0^d 2 \pi \frac{dP(a, \theta)}{d\theta} \left<\frac{dN}{da}\right>_{\psi} da
   \label{dPdsec}
 \end{equation}
 これを$\theta$で平均化すると
 \begin{equation}
-  \left<\frac{dP}{d\frac{1}{\cos\theta}}\right>_{\theta} = \cos^2 \theta A(\theta) \int_0^d 2 \pi a \frac{dP(a, \theta)}{d\theta} \left<\frac{dN}{da}\right>_{\psi} da
+  \left<\frac{dP}{d\frac{1}{\cos\theta}}\right>_{\theta} = \cos^2 \theta A(\theta) \int_0^d 2 \pi \frac{dP(a, \theta)}{d\theta} \left<\frac{dN}{da}\right>_{\psi} da
   \label{dPdsec_ave}
 \end{equation}
 この$\sec(\theta)$分布（図\ref{fig:dPdSec_theta}）が$<dP/dt>_a$（図\ref{fig:dPdt_ave_a_and_theta}）と似た形になることがわかる。

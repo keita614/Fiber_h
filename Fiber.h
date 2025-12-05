@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <cmath>
 #include <unistd.h>
 #include <vector>
 #include <sys/stat.h>
@@ -118,6 +119,24 @@ public:
   // 仕様書3章 //
 
   /**
+   * 仕様書式(9)の計算本体
+   * dN/daについて、psi=0つまりファイバーに垂直に入射した場合の身を考える
+   */
+  void Check_a_dist_vertical(const char *fileName, double aStep = 0.005){
+    FILE *fp = fopen(fileName, "w");
+    double a = 0.0; 
+    double psi = 0.0;
+    double dA = aStep;
+    while(a < GetD1()){
+      double Adist = a_dist_with_abs(a, psi);
+      fprintf(fp, "%f %f\n", a, Adist);
+      printf("Finished a %f mm\n", a);
+      a += dA;
+    }
+    fclose(fp);
+  }
+
+  /**
    * 仕様書式(10)の計算本体
    * dN/daをψで平均化したものの分布を確認することができる
    * @param psi はファイバー軸に垂直な軸からの角度である
@@ -127,7 +146,7 @@ public:
     double a = 0.0; 
     double dA = aStep;
     while(a < GetD1()){
-      double Adist = Calc_a_dist_over_psi(a);
+      double Adist = Calc_a_dist_average_over_psi(a);
       fprintf(fp, "%f %f\n", a, Adist);
       printf("Finished a %f mm\n", a);
       a += dA;
@@ -135,103 +154,12 @@ public:
     fclose(fp);
   }
 
-  // 仕様書4章 //
-
-  /*!
-   * 仕様書式(11)式の積分本体
-   * 任意のaに対するTrapping Efficiency P(a)の計算。
-   */
-  double Calc_Pa(double a) {
-    gsl_function F;
-    SetA(a);
-    F.function = f_integral_solidangle;
-    F.params = this;
-    double result, err;
-    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
-    gsl_integration_qag(&F, 0, 2.0*M_PI, 0, 1e-5, 1000, GSL_INTEG_GAUSS31, local_w, &result, &err);
-    gsl_integration_workspace_free(local_w);
-    _result = 0.5 - result/4/M_PI;
-    _err = err/4/M_PI;  
-    return 0.5 - result/4/M_PI;  
-  }
+  // 仕様書4章, 5章 //
 
   /**
-   * 仕様書式(13)式の積分本体
-   * Trapping Efficiency P(a)をaで平均化する計算
+   * 仕様書式(13), (21)の計算本体
+   * Trapping Efficiencyのa分布について、atenuationの効果があるものとないものをそれぞれ計算する
    */
-  double Calc_P_average_over_a() {
-    gsl_function F;
-    F.function = f_integral_average_over_a;
-    F.params = this;
-    double result, err;
-    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
-    gsl_integration_qag(&F, 0, _d1, 0, 1e-5, 1000, GSL_INTEG_GAUSS41, local_w, &result, &err);
-    gsl_integration_workspace_free(local_w);
-    _P = 2.0*result/_d1/_d1;
-    _Perr = 2.0*err/_d1/_d1;
-    return 2.0*result/_d1/_d1;
-  }
-
-  /*!
-   * Calculate the trapping efficiency P(a, z) using the equation (18).
-   * Convergence is most severe.
-   * @param a The off-axis distance at the photon emission point in [mm]
-   * @param z The distance from the edge of the fiber along the axis in [mm]
-   */
-  //常定pdfの(19)式の積分本体
-  double Calc_Paz(double a, double z) {
-    gsl_function F;
-    SetA(a);
-    SetZ(z);  
-    F.function = f_integral_phi_att;
-    F.params = this;
-    double result, err;
-    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
-    gsl_integration_qag(&F, 0, 2.0*M_PI, 0, 1e-3, 1000, GSL_INTEG_GAUSS31, local_w, &result, &err);
-    gsl_integration_workspace_free(local_w);
-    _result = result/4/M_PI;
-    _err = err/4/M_PI;  
-    return result/4/M_PI;  
-  }
-
-  /*!
-   * Calculate Patt(a) at a given "a" by equation (19).
-   * @param a The off-axis distance at the photon emission point in [mm]
-   */
-  //常定pdfの(20)式の計算本体
-  double Calc_Pa_average_over_z(double a) {
-    SetA(a);
-    gsl_function F;
-    F.function = f_integral_average_over_z;
-    F.params = this;
-    double result, err;
-    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
-    gsl_integration_qag(&F, 0, _L, 0, 1e-3, 1000, GSL_INTEG_GAUSS31, local_w, &result, &err);
-    gsl_integration_workspace_free(local_w);
-    _result = result/_L;
-    _err = err/_L;
-    return result/_L;
-  }
-  /*! Calculate the average trapping efficiency <Patt> over z and a, using equation (20). */
-  //常定pdfの(21)式の積分の計算本体
-  double Calc_P_average_over_za() {
-    gsl_function F;
-    F.function = f_integral_average_over_za;
-    F.params = this;
-    double result, err;
-    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
-    gsl_integration_qag(&F, 0, _d1, 0, 1e-3, 1000, GSL_INTEG_GAUSS31, local_w, &result, &err);
-    gsl_integration_workspace_free(local_w);
-    _Patt = 2*result/_d1/_d1;
-    _Patterr = 2*err/_d1/_d1;
-    return 2*result/_d1/_d1;
-  }
-
-  /*!
-   * Calculate P(a) and Patt(a) in the a range [0:d1] using (9) and (19) with a given step.
-   * The results are written in a text file.
-   */
-  //Trapping efficiency P(a)とPatt(a)を(9)式と(19)式で計算し、テキストファイルに出力する
   void Calc_Pa_Patta(const char *fileName, double astep = 0.005) {
     FILE *fp = fopen(fileName, "w");
     Calc_P_average_over_a();
@@ -244,16 +172,18 @@ public:
     printf("P = %e +/- %e, Patt = %e +/- %e\n", _P, _Perr, _Patt, _Patterr);
 
     double a = 0.0;
-    while (a < _d1) {      
-      double Paresult = Calc_Pa(a);;      
+    while (a < _d1) {
+      double dNdA = Calc_a_dist_average_over_psi(a);      
+      double Paresult = Calc_Pa(a);      
       double Pattaresult = Calc_Pa_average_over_z(a);
-      fprintf(fp, "%e %e %e\n", a, Paresult, Pattaresult);
+      fprintf(fp, "%e %e %e\n", a, Paresult*dNdA, Pattaresult*dNdA);
       a += 0.005;
     }
-    a = _d1;    
+    a = _d1;
+    double dNdA = Calc_a_dist_average_over_psi(a);    
     double Paresult = Calc_Pa(a);    
     double Pattaresult = Calc_Pa_average_over_z(a);
-    fprintf(fp, "%e %e %e\n", a, Paresult, Pattaresult);    
+    fprintf(fp, "%e %e %e\n", a, Paresult*dNdA, Pattaresult*dNdA);    
     fclose(fp);
   }
 
@@ -763,6 +693,7 @@ private:
   //  1. メンバ変数 (Member Variables)
   //     - クラス全体で使うデータはここにまとめる
   // ===========================================================================================
+
   /*! Fiber attributes */
   double _n0; /*!< Refractive index of the fiber core */
   double _n1; /*!< Refractive index of the inner cladding */
@@ -824,7 +755,8 @@ private:
   static double f_integral_average_over_a(double a, void *data) {
     Fiber *fiber = (Fiber *) data;
     double Pa = fiber->Calc_Pa(a);
-    return a*Pa;
+    double dNdA = fiber->Calc_a_dist_average_over_psi(a);
+    return dNdA*Pa;
   }
 
   //　仕様書5章　ファイバー端からの距離z でのTrapping Eﬃciency　//
@@ -879,7 +811,8 @@ private:
   static double f_integral_average_over_za(double a, void *data) {
     Fiber *fiber = (Fiber *) data;
     double Pa = fiber->Calc_Pa_average_over_z(a);
-    return a*Pa;
+    double dNdA = fiber->Calc_a_dist_average_over_psi(a);
+    return dNdA*Pa;
   }
 
   // 仕様書6章1節 角度分布 //
@@ -973,7 +906,7 @@ private:
 
   // ===========================================================================================
   //  3. gsl以外のprivateな関数
-  //      ここも見なくていいが、そこそこ計算がまとまっているので、ガッツリ利用するのであれば理解した方がいい
+  //      ここも見なくていいが、新しい関数を作成したいのなら理解したほうがいい
   // ===========================================================================================
 
   // 仕様書3章 //
@@ -987,37 +920,40 @@ private:
     double l_abs = GetLabs();
     double s = sin(psi);
     double c = cos(psi);
-    double Adist_val;
     double root_arg = a*a - r*r*s*s;
-    if (root_arg <= 0){return 0.0:}
+    if (root_arg <= 0){return 0.0;}
     double root = sqrt(root_arg);
     double ch = cosh(root/l_abs);
-    return Adist_val = 2.0/l_abs * exp(-r*c/l_abs) * ch * a / root;
+    double Adist_val = 2.0/l_abs * exp(-r*c/l_abs) * ch * a / root;
+    return Adist_val;
   }
 
   /**
    * 仕様書式(10)の積分本体
    * aの初期位置の分布dN/daをについて、ファイバーへの入射角ψで平均化したもの
    */
-  double Calc_a_dist_over_psi(double a){
-    SetA(a);
-    double upper_limit;
-    double r = GetD1();
-    if (a >= r) {
-        upper_limit = M_PI / 2.0; // aがrより大きければ常時正なので90度まで積分
-    } else {
-        upper_limit = asin(a / r); // 限界角度まで積分
+  double Calc_a_dist_average_over_psi(double a){
+    if(isnan(_Labs)){return 1.0;}
+    else{
+      SetA(a);
+      double upper_limit;
+      double r = GetD1();
+      if (a >= r) {
+          upper_limit = M_PI / 2.0; // aがrより大きければ常時正なので90度まで積分
+      } else {
+          upper_limit = asin(a / r); // 限界角度まで積分
+      }
+      gsl_function F;
+      F.function = f_integral_a_dist_over_psi;
+      F.params = this;
+      double result, err;
+      double epsabs = 1e-10; // 絶対誤差の許容値
+      double epsrel = 1e-5;  // 相対誤差の許容値
+      gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
+      gsl_integration_qag(&F, 0, M_PI/2, epsabs, epsrel, 1000, GSL_INTEG_GAUSS41, local_w, &result, &err);
+      gsl_integration_workspace_free(local_w);
+      return result;
     }
-    gsl_function F;
-    F.function = f_integral_a_dist_over_psi;
-    F.params = this;
-    double result, err;
-    double epsabs = 1e-10; // 絶対誤差の許容値
-    double epsrel = 1e-5;  // 相対誤差の許容値
-    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
-    gsl_integration_qag(&F, 0, M_PI/2, epsabs, epsrel, 1000, GSL_INTEG_GAUSS41, local_w, &result, &err);
-    gsl_integration_workspace_free(local_w);
-    return result;
   }
 
   // Initial_a_distribution.txtの準備
@@ -1039,7 +975,7 @@ private:
       double step = 0.00001; // 精度が必要なら細かくする
 
       while (a < limit) {
-          double val = Calc_a_dist_over_psi(a); // 重い計算を実行
+          double val = Calc_a_dist_average_over_psi(a); // 重い計算を実行
           outfile << a << " " << val << endl;
           a += step;
       }
@@ -1070,13 +1006,13 @@ private:
     is_table_loaded = true;
   }
 
-  // 仕様書4章
+  // 仕様書4章 //
 
   /**
-   * 仕様書式(12)式の計算本体
+   * 仕様書式(12)の計算本体
    * 全反射を起こす時の最大のcosθの計算
    * @param phi は方位角[rad]
-   * @param a はコア軸からの距離
+   * @param a はコア軸からの距離[mm]
    */
   double Calc_cosThetaMax(double phi, double a) {
     double sinphi = sin(phi);
@@ -1090,6 +1026,101 @@ private:
     double costhetamax = sqrt(1.0 - sin2thetamax);
     return costhetamax;
   }
+
+  /*!
+   * 仕様書式(11)の積分本体
+   * 任意のaに対するTrapping Efficiency P(a)の計算。
+   */
+  double Calc_Pa(double a) {
+    gsl_function F;
+    SetA(a);
+    F.function = f_integral_solidangle;
+    F.params = this;
+    double result, err;
+    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
+    gsl_integration_qag(&F, 0, 2.0*M_PI, 0, 1e-5, 1000, GSL_INTEG_GAUSS31, local_w, &result, &err);
+    gsl_integration_workspace_free(local_w);
+    _result = 0.5 - result/4/M_PI;
+    _err = err/4/M_PI;  
+    return 0.5 - result/4/M_PI;  
+  }
+
+  /**
+   * 仕様書式(13)の積分本体
+   * Trapping Efficiency P(a)をaで平均化する計算
+   */
+  double Calc_P_average_over_a() {
+    gsl_function F;
+    F.function = f_integral_average_over_a;
+    F.params = this;
+    double result, err;
+    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
+    gsl_integration_qag(&F, 0, _d1, 0, 1e-5, 1000, GSL_INTEG_GAUSS41, local_w, &result, &err);
+    gsl_integration_workspace_free(local_w);
+    _P = 2.0*result/_d1/_d1;
+    _Perr = 2.0*err/_d1/_d1;
+    return 2.0*result/_d1/_d1;
+  }
+
+  // 仕様書5章 //
+
+  /*!
+   * 仕様書式(19)の積分本体
+   * 任意のzでのTrapping Effisciency P(a,z)のφ積分の項。μ積分の項はf_integral_phi_attで行われている。
+   * @param z は検出側とは逆のファイバー端からの距離[mm]
+   */
+  double Calc_Paz(double a, double z) {
+    gsl_function F;
+    SetA(a);
+    SetZ(z);  
+    F.function = f_integral_phi_att;
+    F.params = this;
+    double result, err;
+    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
+    gsl_integration_qag(&F, 0, 2.0*M_PI, 0, 1e-3, 1000, GSL_INTEG_GAUSS31, local_w, &result, &err);
+    gsl_integration_workspace_free(local_w);
+    _result = result/4/M_PI;
+    _err = err/4/M_PI;  
+    return result/4/M_PI;  
+  }
+
+  /*!
+   * 仕様書式(20)の積分本体
+   * ファイバー軸方向に一様に光子が入射した時のTrapping Efficiencyのz平均
+   */
+  //常定pdfの(20)式の計算本体
+  double Calc_Pa_average_over_z(double a) {
+    SetA(a);
+    gsl_function F;
+    F.function = f_integral_average_over_z;
+    F.params = this;
+    double result, err;
+    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
+    gsl_integration_qag(&F, 0, _L, 0, 1e-3, 1000, GSL_INTEG_GAUSS31, local_w, &result, &err);
+    gsl_integration_workspace_free(local_w);
+    _result = result/_L;
+    _err = err/_L;
+    return result/_L;
+  }
+
+  /**
+   * 仕様書式(21)の積分本体
+   * ファイバー軸方向に一様に光子が入射した時のTrapping Efficiencyのz平均にabsorptionの効果を入れたもの。
+   */
+  double Calc_P_average_over_za() {
+    gsl_function F;
+    F.function = f_integral_average_over_za;
+    F.params = this;
+    double result, err;
+    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
+    gsl_integration_qag(&F, 0, _d1, 0, 1e-3, 1000, GSL_INTEG_GAUSS31, local_w, &result, &err);
+    gsl_integration_workspace_free(local_w);
+    _Patt = 2*result/_d1/_d1;
+    _Patterr = 2*err/_d1/_d1;
+    return 2*result/_d1/_d1;
+  }
+
+  // 仕様書6章 //
 };
 
 #endif

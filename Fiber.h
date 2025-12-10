@@ -120,7 +120,8 @@ public:
 
   /**
    * 仕様書式(9)の計算本体
-   * dN/daについて、psi=0つまりファイバーに垂直に入射した場合の身を考える
+   * dN/daについて、psi=0つまりファイバーに垂直に入射した場合のみを考える
+   * 確認のための関数
    */
   void Check_a_dist_vertical(const char *fileName, double aStep = 0.005){
     FILE *fp = fopen(fileName, "w");
@@ -140,6 +141,7 @@ public:
    * 仕様書式(10)の計算本体
    * dN/daをψで平均化したものの分布を確認することができる
    * @param psi はファイバー軸に垂直な軸からの角度である
+   * 確認のための関数
    */
   void Check_a_dist(const char *fileName, double aStep = 0.005){
     FILE *fp = fopen(fileName, "w");
@@ -187,8 +189,12 @@ public:
     fclose(fp);
   }
 
-  // 6.1 角度分布 //
+  // 仕様書6章1節　角度分布 //
 
+  /**
+   * 仕様書式(23)の計算本体
+   * ファイバー全体で平均化したTrapping Efficiencyの角度分布dP/dθを計算する
+   */
   void Calc_dPdTheta(const char *fileName, double thetaStep = 1.0) {
     double theta = 0.0;
     double dTheta = thetaStep*M_PI/180;
@@ -210,39 +216,11 @@ public:
     fclose(fp);
   }
 
-  void Calc_dPdTheta_secondtheta(const char *fileName, double SecthetaStep = 0.01) {
-    double SecTheta = 1;
-    double dSecTheta = SecthetaStep;
-    double c = 1/SecTheta;
-    double s = sqrt(1-c*c);
-    double theta = acos(c);
-    vector<double> v;
-    double sum = 0.0;
-    double P = 0.0;
-    while (SecTheta < 10) {
-      s = sqrt(1-c*c);
-      c = 1/SecTheta;
-      theta = acos(c);
-      if (s > 1e-9) { // 0.0 と厳密に比較する代わりに、非常に小さい数より大きいかを見る
-      P = c*c*dPdTheta(theta);}
-      v.push_back(P);      
-      sum += P*dSecTheta;
-      SecTheta += dSecTheta;
-    }    
-    FILE *fp = fopen(fileName, "w");
-    SecTheta = 1;
-    for (size_t i = 0; i < v.size(); i++) {
-      double x_val = SecTheta; 
-      double y_val = 0.0; // デフォルトは0
-      if (fabs(sum) > 1e-9) { // sumが0(またはほぼ0)でないことを確認
-          y_val = v[i] / sum;
-      }
-      fprintf(fp, "%f %f\n", x_val, y_val);
-      SecTheta += dSecTheta;
-    }
-    fclose(fp);
-  }
+  // 仕様書不記載 //
 
+  /**
+   * Fiber全体で平均化したTrapping Efficiencyのa分布dP/daを計算する
+   */
   void Calc_dPda(const char *fileName, double aStep = 0.01) {
     double a = 0;
     vector<double> v;
@@ -261,80 +239,15 @@ public:
       a += aStep;
     }
     fclose(fp);
-  }
-  
-  //式(31)の計算をステップを刻んで出力
- void Calc_dPdt(const char *fileName, double thetaStep = 10, double aStep = 0.05 , double zStep = 100){
-    FILE *fp = fopen(fileName, "w");
-    double theta = 0.0;
-    double dTheta = thetaStep*M_PI/180;
-    double a = 0.0;
-    double dA = aStep;
-    double z = 0.0;
-    double dZ = zStep;
-    fprintf(fp, "theta a z t P\n");
-    while (theta < M_PI/2) {
-      a = 0.0;
-      while (a < GetD1()) {
-        z = 0.0;
-        while (z < GetL()) {
-          double P = dPdt(theta, a, z);
-          double t = Transit_time(theta, z);
-          fprintf(fp, "%f %f %f %f %f\n", theta*180/M_PI, a, z, t, P);
-          z += dZ;
-        }
-        a += dA;
-      }
-      theta += dTheta;
-    }
-    fclose(fp);
   }  
 
-  //式(32)の計算をステップを刻んで出力
-  void Calc_dPdt_average_over_theta(const char *fileName, double thetaStep = 1.0, double aStep = 0.05 , double zStep = 10){
-    FILE *fp = fopen(fileName, "w");
-    double theta = 0.0;
-    double dTheta = thetaStep*M_PI/180;
-    double a = 0.0;
-    double dA = aStep;
-    double z = 0.0;
-    double dZ = zStep;
-    double weight = 0.0;
-    fprintf(fp, "a z t P\n");
+  // 仕様書6章3節 光がファイバー内で移動する時間の分布 //
 
-    while (z < GetL()) {
-      a = 0.0;
-      while (a < GetD1()) {
-        double sum_P = 0.0;
-        double sum_t = 0.0;
-        double sum_weight = 0.0;
-        theta = 0.0;
-        while (theta < M_PI/2) {
-          double P = dPdt(theta, a, z);
-          double t = Transit_time(theta, z);
-          if (theta > 0.0) {weight = sin(theta) * dTheta;}
-          else { weight = 0.0;};
-          double P_weight = P * weight;
-          double t_weight = t * weight;
-          sum_P += P_weight;
-          sum_t += t_weight;
-          sum_weight += weight;
-
-          theta += dTheta;
-        }
-        double avg_P = (sum_weight > 0) ? (sum_P / sum_weight) : 0.0;
-        double avg_t = (sum_weight > 0) ? (sum_t / sum_weight) : 0.0;
-        fprintf(fp, "%f %f %f %e\n", a, z, avg_t, avg_P);
-        a += dA;
-      }
-      printf("Finished z = %f mm\n", z);
-      z += dZ;
-    }
-    fclose(fp);
-  }
-
-  // Absorption Length の効果を考慮に入れたもの
-  void Calc_dPdt_with_a_dist(const char *fileName, double thetaStep = 1.0, double aStep = 0.05 , double zStep = 10){
+  /**
+   * 仕様書式(31)の計算本体
+   * ファイバー全体で平均化したTrapping Efficiencyの時間分布dP/dtを計算する
+   */
+  void Calc_dPdt(const char *fileName, double thetaStep = 1.0, double aStep = 0.05 , double zStep = 10){
     FILE *fp = fopen(fileName, "w");
     double theta = 0.0;
     double dTheta = thetaStep*M_PI/180;
@@ -344,7 +257,6 @@ public:
     double dZ = zStep;
     double weight = 0.0;
     fprintf(fp, "a, z, t, dPdt\n");
-
     while (z < GetL()) {
       a = 0.0;
       while (a < GetD1()) {
@@ -377,7 +289,39 @@ public:
     fclose(fp);
   }
 
-  // Absorption Length の効果を考慮に入れ、aで平均化したもの
+  /**
+   * 仕様書式(31)の計算の、z固定版
+   * ファイバー内のあるz位置でのTrapping Efficiencyの時間分布dP/dtをθで平均化して計算する
+   */
+  void Calc_dPdt_solid_z(const char *fileName, double thetaStep = 1){
+    FILE *fp = fopen(fileName, "w");
+    double theta = 0.0;
+    double dTheta = thetaStep*M_PI/180;
+    double z = 0;
+    double t;
+    double weight = 0.0;
+
+    double P_weight;
+    theta = 0.0;
+    fprintf(fp, "t dPdt\n");
+    while(theta < M_PI/2){
+      double P = dPdt_a(z, theta);
+      t = Transit_time(theta, z);
+      if (theta > 0.0) {weight = sin(theta) * dTheta;}
+        else { weight = 0.0;};
+      P_weight = P * weight ;
+
+      fprintf(fp, "%f %e\n", t, P_weight);
+      printf("Calculating... Finished theta = %f \n",theta);
+      fflush(stdout);
+      theta += dTheta;
+    }
+
+    fclose(fp);
+  }
+  /**
+   * 
+   */
   void Calc_dPdt_a_with_a_dist(const char *fileName, double thetaStep = 1, double zStep = 1){
     // Structure to hold results to avoid concurrent file writing
     struct DataPoint {
@@ -445,34 +389,51 @@ public:
     printf("Calculation finished and saved to %s\n", fileName);
   }
 
-  // zは固定し、Absorption Length の効果を考慮に入れ、aで平均化したもの
-  void Calc_dPdt_a_with_a_dist_solidz(const char *fileName, double thetaStep = 1){
+  // 仕様書6章4節 Trapping Eﬃciency のsec 分布 //
+
+  /**
+   * 仕様書式(36)の計算本体
+   * ファイバー全体で平均化したTrapping Efficiencyのsecθ分布を計算する
+   */
+  void Calc_dPdTheta_secondtheta(const char *fileName, double SecthetaStep = 0.01) {
+    double SecTheta = 1;
+    double dSecTheta = SecthetaStep;
+    double c = 1/SecTheta;
+    double s = sqrt(1-c*c);
+    double theta = acos(c);
+    vector<double> v;
+    double sum = 0.0;
+    double P = 0.0;
+    while (SecTheta < 10) {
+      s = sqrt(1-c*c);
+      c = 1/SecTheta;
+      theta = acos(c);
+      if (s > 1e-9) { // 0.0 と厳密に比較する代わりに、非常に小さい数より大きいかを見る
+      P = c*c*dPdTheta(theta);}
+      v.push_back(P);      
+      sum += P*dSecTheta;
+      SecTheta += dSecTheta;
+    }    
     FILE *fp = fopen(fileName, "w");
-    double theta = 0.0;
-    double dTheta = thetaStep*M_PI/180;
-    double z = 0;
-    double t;
-    double weight = 0.0;
-
-    double P_weight;
-    theta = 0.0;
-    fprintf(fp, "t dPdt\n");
-    while(theta < M_PI/2){
-      double P = dPdt_a(z, theta);
-      t = Transit_time(theta, z);
-      if (theta > 0.0) {weight = sin(theta) * dTheta;}
-        else { weight = 0.0;};
-      P_weight = P * weight ;
-
-      fprintf(fp, "%f %e\n", t, P_weight);
-      printf("Calculating... Finished theta = %f \n",theta);
-      fflush(stdout);
-      theta += dTheta;
+    SecTheta = 1;
+    for (size_t i = 0; i < v.size(); i++) {
+      double x_val = SecTheta; 
+      double y_val = 0.0; // デフォルトは0
+      if (fabs(sum) > 1e-9) { // sumが0(またはほぼ0)でないことを確認
+          y_val = v[i] / sum;
+      }
+      fprintf(fp, "%f %f\n", x_val, y_val);
+      SecTheta += dSecTheta;
     }
-
     fclose(fp);
   }
 
+  // 仕様書6章5節 脱出角度分布 //
+  
+  /**
+   * 仕様書には不記載
+   * ファイバー端から脱出する光の分布を計算する
+   */
   void Calc_escape_angle(const char *fileName, double thetaStep = 1.0){
     double theta = 0.0;
     double dTheta = thetaStep*M_PI/180;
@@ -669,7 +630,7 @@ private:
     return dPdTheta;
   }
 
-  // 仕様書6章3節 //
+  // 仕様書6章3節 光がファイバー内で移動する時間の分布 //
 
   /**
    * 仕様書式(31)の被積分項
@@ -683,7 +644,7 @@ private:
     return dPdt;
   }
 
-  // 仕様書6章5節
+  // 仕様書6章5節 脱出角度分布 //
   /**
    * 仕様書式()　＜ーちゃんと式かけ
    * ファイバー端から脱出する光の分布をTrapping Efficiencyのθ分布から計算し、それをaで平均化する計算の被積分項
@@ -773,7 +734,12 @@ private:
     }
   }
 
-  // Initial_a_distribution.txtの準備
+  /**
+   * 仕様書には不記載
+   * 初期位置分布のテーブルを準備する関数
+   1. ファイルが存在しなければ作成
+   2. ファイルを読み込み、メモリに展開
+   */
   void PrepareTable() {
     if (is_table_loaded) return;
 
@@ -821,6 +787,37 @@ private:
       }
     }
     is_table_loaded = true;
+  }
+
+  /**
+   * 仕様書には不記載
+   * 任意のaに対する初期位置分布の値をテーブルから補間して取得する関数
+   * 基本はこの関数を使う
+   */
+  double Get_a_initial_distribution(double a) {
+    // まだ読み込んでいなければ読み込む (Lazy Loading)
+    if (!is_table_loaded) {
+      PrepareTable();
+    }
+
+    // 範囲外チェック
+    if (table_a.empty()) return 0.0;
+    if (a <= table_a.front()) return table_val.front();
+    if (a >= table_a.back()) return 0.0; // 範囲外は0とする場合
+
+    // --- 二分探索と線形補間 (高速) ---
+    // a 以上の最初のイテレータを見つける
+    auto it = lower_bound(table_a.begin(), table_a.end(), a);
+    
+    size_t idx = distance(table_a.begin(), it);
+    
+    double x1 = table_a[idx - 1];
+    double x2 = table_a[idx];
+    double y1 = table_val[idx - 1];
+    double y2 = table_val[idx];
+
+    // 線形補間: y = y1 + (x - x1) * (y2 - y1) / (x2 - x1)
+    return y1 + (a - x1) * (y2 - y1) / (x2 - x1);
   }
 
   // 仕様書4章 //
@@ -1058,6 +1055,44 @@ private:
     return l/c_core;
   }
 
+  // 仕様書6章5節 //
+
+  /**
+   * 仕様書には不記載
+   * dθ->dθ_escapeの変換とa分布の重み付け
+   */
+  double Escape_angle_distribution(double theta, double a){
+    double n_ice = 1.309;
+    double n =  n_ice / GetN0();
+    double weight_a = Get_a_initial_distribution(a);
+    double weight_jac = n * sqrt(1 - sin(theta)*sin(theta) / (n*n))/cos(theta);
+    double weight = weight_a * weight_jac;
+    return weight;
+  };
+  
+  /**
+   * 仕様書には不記載
+   * ファイバー端から脱出する光のθ分布をTrapping Efficiencyのθ分布から計算し、それをaで平均化する計算の本体
+   */
+  double dPdTheta_escape(double theta) { 
+    gsl_function F;
+    F.function = f_integral_escape_dist;
+    F.params = this;
+    SetTheta(theta);
+    double result, err;
+    double epsabs = 1e-10; // 絶対誤差の許容値
+    double epsrel = 1e-5;  // 相対誤差の許容値
+    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(5000);
+    gsl_integration_qag(&F, 0, _d1, epsabs, epsrel, 5000, GSL_INTEG_GAUSS41, local_w, &result, &err);
+    gsl_integration_workspace_free(local_w);
+    double c = cos(theta);
+    double s = sin(theta);
+    double att = 1.0 - exp(-_L/c/_Latt);
+    return 2.0*result/_d1/_d1*s*c*_Latt*att/_L;
+  };
+
+  // 未記載 //
+
   /**
    * Komae's (18)
    */
@@ -1083,62 +1118,6 @@ private:
     gsl_deriv_forward(&F, a, 0.001, &result, &err);
     return result;
   }
-
-  // ファイバーのabsorptionの効果を計算する
-  /* @param psi Azimuthal angle with respect to the cross-section of the fiber*/
-  //aの初期位置を決定する分布関数
-  double Get_a_initial_distribution(double a) {
-    // まだ読み込んでいなければ読み込む (Lazy Loading)
-    if (!is_table_loaded) {
-      PrepareTable();
-    }
-
-    // 範囲外チェック
-    if (table_a.empty()) return 0.0;
-    if (a <= table_a.front()) return table_val.front();
-    if (a >= table_a.back()) return 0.0; // 範囲外は0とする場合
-
-    // --- 二分探索と線形補間 (高速) ---
-    // a 以上の最初のイテレータを見つける
-    auto it = lower_bound(table_a.begin(), table_a.end(), a);
-    
-    size_t idx = distance(table_a.begin(), it);
-    
-    double x1 = table_a[idx - 1];
-    double x2 = table_a[idx];
-    double y1 = table_val[idx - 1];
-    double y2 = table_val[idx];
-
-    // 線形補間: y = y1 + (x - x1) * (y2 - y1) / (x2 - x1)
-    return y1 + (a - x1) * (y2 - y1) / (x2 - x1);
-  }
-
-  //Escap angle Distribution
-  double Escape_angle_distribution(double theta, double a){
-    double n_ice = 1.309;
-    double n =  n_ice / GetN0();
-    double weight_a = Get_a_initial_distribution(a);
-    double weight_jac = n * sqrt(1 - sin(theta)*sin(theta) / (n*n))/cos(theta);
-    double weight = weight_a * weight_jac;
-    return weight;
-  };
-
-  double dPdTheta_escape(double theta) { 
-    gsl_function F;
-    F.function = f_integral_escape_dist;
-    F.params = this;
-    SetTheta(theta);
-    double result, err;
-    double epsabs = 1e-10; // 絶対誤差の許容値
-    double epsrel = 1e-5;  // 相対誤差の許容値
-    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(5000);
-    gsl_integration_qag(&F, 0, _d1, epsabs, epsrel, 5000, GSL_INTEG_GAUSS41, local_w, &result, &err);
-    gsl_integration_workspace_free(local_w);
-    double c = cos(theta);
-    double s = sin(theta);
-    double att = 1.0 - exp(-_L/c/_Latt);
-    return 2.0*result/_d1/_d1*s*c*_Latt*att/_L;
-  };
 };
 
 #endif

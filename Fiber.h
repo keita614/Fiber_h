@@ -189,39 +189,6 @@ public:
 
   // 6.1 角度分布 //
 
-  /**
-   * 仕様書式(21)の計算本体
-   * dP/dθ = 1/2π sinθ ∮_Φ(θ)dΦの計算
-   */
-  double dPdTheta(double a, double theta) { 
-    gsl_function F;
-    F.function = check_refrection;
-    F.params = this;
-    SetA(a);
-    SetTheta(theta);
-    double result, err;
-    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);    
-    gsl_integration_qag(&F, 0, 2*M_PI, 0, 1e-6, 1000, GSL_INTEG_GAUSS41, local_w, &result, &err);
-    gsl_integration_workspace_free(local_w);
-    return result/2/M_PI;
-  }
-
-  //常定pdfの(22)式の計算結果をファイバーの断面積で平均化する計算
-  double dPdTheta(double theta) {
-    gsl_function F;
-    F.function = f_integral_theta_dist_a;
-    F.params = this;
-    SetTheta(theta);
-    double result, err;
-    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(5000);
-    gsl_integration_qag(&F, 0, _d1, 0, 1e-3, 5000, GSL_INTEG_GAUSS41, local_w, &result, &err);
-    gsl_integration_workspace_free(local_w); 
-    double c = cos(theta);
-    double s = sin(theta);
-    double att = 1.0 - exp(-_L/c/_Latt);
-    return 2.0*result/_d1/_d1*s*c*_Latt*att/_L;
-  }
-
   void Calc_dPdTheta(const char *fileName, double thetaStep = 1.0) {
     double theta = 0.0;
     double dTheta = thetaStep*M_PI/180;
@@ -276,12 +243,7 @@ public:
     fclose(fp);
   }
 
-  double dPda(double a) {
-    return 2.0*M_PI*a*Calc_Pa_average_over_z(a);
-  }
-
   void Calc_dPda(const char *fileName, double aStep = 0.01) {
-
     double a = 0;
     vector<double> v;
     double sum = 0.0;
@@ -301,59 +263,6 @@ public:
     fclose(fp);
   }
 
-  //4.2 Path length and propagation time distributions
-  //常定pdfの式(27)の計算結果
-  double dPdl(double theta) {
-    gsl_function F;
-    F.function = f_integral_theta_dist_a;
-    F.params = this;
-    SetTheta(theta);
-    double result, err;
-    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
-    gsl_integration_qag(&F, 0, _d1, 0, 1e-5, 1000, GSL_INTEG_GAUSS41, local_w, &result, &err);
-    gsl_integration_workspace_free(local_w);
-    double c = cos(theta);
-    double s = sin(theta);
-    double att = c*_Latt - exp(-_L/c/_Latt)*(c*_Latt + _L);
-    return 2.0*result/_d1/_d1*s*_Latt*att/_L/c;
-  }
-
-  //以下、dPdtの計算を自身でおこなったものを記述する。
-  //4.3 Propagation time distribution について、平均化ではなく ﬁber の各点で計算することで求める計算方法
-  //式(34)の計算結果
-  double dPdt(double theta, double a, double z){
-    double c = GetLightSpeed(); 
-    double c_core = c/_n0;
-    SetTheta(theta);
-    SetA(a);
-    SetZ(z);
-    double costheta = cos(theta);
-    double L = GetL();
-    double l = L - z;
-    double dPdtheta = dPdTheta(a, theta);
-    return c_core*costheta*costheta/l*dPdtheta;
-  }
-
-  //dPdtのaについて平均化する計算
-  double dPdt_a(double z, double theta){
-    gsl_function F;
-    SetZ(z);
-    SetTheta(theta);
-    F.function = f_integral_a_dist;
-    F.params = this;
-    double result, err;
-    double pts[2] = {0.0, _d1};
-    size_t npts = 2;
-    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(5000);
-    int status = gsl_integration_qagp(&F, pts, npts, 0, 1e-3, 5000, local_w, &result, &err);
-    gsl_integration_workspace_free(local_w);
-    if (status != GSL_SUCCESS) {
-        // エラーなら0を返すか、ログを出すなどの処理
-        printf("Warning: Integration did not converge in dPdt_a(z=%f, theta=%f)\n", z, theta);
-        return 0.0; 
-    }
-    return 2.0*result/_d1/_d1;
-  }
 
   //paperには不記載だが、伝達時間を計算する関数
   double Trapping_time(double theta, double z){
@@ -1088,7 +997,6 @@ private:
    * 仕様書式(20)の積分本体
    * ファイバー軸方向に一様に光子が入射した時のTrapping Efficiencyのz平均
    */
-  //常定pdfの(20)式の計算本体
   double Calc_Pa_average_over_z(double a) {
     SetA(a);
     gsl_function F;
@@ -1120,7 +1028,114 @@ private:
     return 2*result/_d1/_d1;
   }
 
-  // 仕様書6章 //
+  // 仕様書6章1節 //
+
+  /**
+   * 仕様書式(22)の計算本体
+   * dP/dθ = 1/2π sinθ ∮_Φ(θ)dΦの計算
+   */
+  double dPdTheta(double a, double theta) { 
+    gsl_function F;
+    F.function = check_refrection;
+    F.params = this;
+    SetA(a);
+    SetTheta(theta);
+    double result, err;
+    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);    
+    gsl_integration_qag(&F, 0, 2*M_PI, 0, 1e-6, 1000, GSL_INTEG_GAUSS41, local_w, &result, &err);
+    gsl_integration_workspace_free(local_w);
+    return result/2/M_PI;
+  }
+
+  /**
+   * 仕様書式(23)の計算本体
+   * dP/dθをファイバー軸からの距離aで平均化したもの
+   */
+  double dPdTheta(double theta) {
+    gsl_function F;
+    F.function = f_integral_theta_dist_a;
+    F.params = this;
+    SetTheta(theta);
+    double result, err;
+    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(5000);
+    gsl_integration_qag(&F, 0, _d1, 0, 1e-3, 5000, GSL_INTEG_GAUSS41, local_w, &result, &err);
+    gsl_integration_workspace_free(local_w); 
+    double c = cos(theta);
+    double s = sin(theta);
+    double att = 1.0 - exp(-_L/c/_Latt);
+    return 2.0*result/_d1/_d1*s*c*_Latt*att/_L;
+  }
+
+  /**
+   * 仕様書には不記載
+   * Trapping Efficiencyのファイバー軸からの距離a分布
+   */
+  double dPda(double a) {
+    return 2.0*M_PI*Calc_a_dist_average_over_psi(a)*Calc_Pa_average_over_z(a);
+  }
+
+  // 仕様書6章2節 //
+
+  /**
+   * 現在使用されていません
+   */
+  double dPdl(double theta) {
+    gsl_function F;
+    F.function = f_integral_theta_dist_a;
+    F.params = this;
+    SetTheta(theta);
+    double result, err;
+    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
+    gsl_integration_qag(&F, 0, _d1, 0, 1e-5, 1000, GSL_INTEG_GAUSS41, local_w, &result, &err);
+    gsl_integration_workspace_free(local_w);
+    double c = cos(theta);
+    double s = sin(theta);
+    double att = c*_Latt - exp(-_L/c/_Latt)*(c*_Latt + _L);
+    return 2.0*result/_d1/_d1*s*_Latt*att/_L/c;
+  }
+
+  // 仕様書6章3節 //
+  /**
+   * 仕様書式(30)の被積分項
+   * Trapping Effisciencyの時間分布dP/dt
+   */
+  double dPdt(double theta, double a, double z){
+    double c = GetLightSpeed(); 
+    double c_core = c/_n0;
+    SetTheta(theta);
+    SetA(a);
+    SetZ(z);
+    double costheta = cos(theta);
+    double L = GetL();
+    double l = L - z;
+    double dPdtheta = dPdTheta(a, theta);
+    return c_core*costheta*costheta/l*dPdtheta;
+  }
+
+  /**
+   * 仕様書式(31)の計算本体
+   * Trapping Effisciencyの時間分布dP/dtをθで平均化したもの
+   */
+  double dPdt_a(double z, double theta){
+    gsl_function F;
+    SetZ(z);
+    SetTheta(theta);
+    F.function = f_integral_a_dist;
+    F.params = this;
+    double result, err;
+    double pts[2] = {0.0, _d1};
+    size_t npts = 2;
+    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(5000);
+    int status = gsl_integration_qagp(&F, pts, npts, 0, 1e-3, 5000, local_w, &result, &err);
+    gsl_integration_workspace_free(local_w);
+    if (status != GSL_SUCCESS) {
+        // エラーなら0を返すか、ログを出すなどの処理
+        printf("Warning: Integration did not converge in dPdt_a(z=%f, theta=%f)\n", z, theta);
+        return 0.0; 
+    }
+    return 2.0*result/_d1/_d1;
+  }
+
 };
 
 #endif

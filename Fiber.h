@@ -262,17 +262,6 @@ public:
     }
     fclose(fp);
   }
-
-
-  //paperには不記載だが、伝達時間を計算する関数
-  double Trapping_time(double theta, double z){
-    double c = GetLightSpeed(); 
-    double c_core = c/_n0;
-    double costheta = cos(theta);
-    double L = GetL();
-    double l = (L - z)/costheta;
-    return l/c_core;
-  }
   
   //式(31)の計算をステップを刻んで出力
  void Calc_dPdt(const char *fileName, double thetaStep = 10, double aStep = 0.05 , double zStep = 100){
@@ -290,7 +279,7 @@ public:
         z = 0.0;
         while (z < GetL()) {
           double P = dPdt(theta, a, z);
-          double t = Trapping_time(theta, z);
+          double t = Transit_time(theta, z);
           fprintf(fp, "%f %f %f %f %f\n", theta*180/M_PI, a, z, t, P);
           z += dZ;
         }
@@ -322,7 +311,7 @@ public:
         theta = 0.0;
         while (theta < M_PI/2) {
           double P = dPdt(theta, a, z);
-          double t = Trapping_time(theta, z);
+          double t = Transit_time(theta, z);
           if (theta > 0.0) {weight = sin(theta) * dTheta;}
           else { weight = 0.0;};
           double P_weight = P * weight;
@@ -366,7 +355,7 @@ public:
         theta = 0.0;
         while (theta < M_PI/2) {
           double P = dPdt(theta, a, z);
-          double t = Trapping_time(theta, z);
+          double t = Transit_time(theta, z);
           if (theta > 0.0) {weight = sin(theta) * dTheta;}
           else { weight = 0.0;};
           double P_weight = P * weight * weight_a;
@@ -424,7 +413,7 @@ public:
       while(theta < M_PI/2){
         // Use localFiber for calculations
         double P = localFiber.dPdt_a(z, theta);
-        double t = localFiber.Trapping_time(theta, z);
+        double t = localFiber.Transit_time(theta, z);
         
         double weight;
         if (theta > 0.0) {weight = sin(theta) * dTheta;}
@@ -470,7 +459,7 @@ public:
     fprintf(fp, "t dPdt\n");
     while(theta < M_PI/2){
       double P = dPdt_a(z, theta);
-      t = Trapping_time(theta, z);
+      t = Transit_time(theta, z);
       if (theta > 0.0) {weight = sin(theta) * dTheta;}
         else { weight = 0.0;};
       P_weight = P * weight ;
@@ -483,87 +472,6 @@ public:
 
     fclose(fp);
   }
-
-  /**
-   * Komae's (18)
-   */
-  double GetAprime(double a, double z, double theta, double phi) {
-    SetZ(z);
-    SetTheta(theta);
-    SetPhi(phi);
-    return f_aprime(a, this);
-  }
-  /**
-   * Derivative of (18) with respect to a, partial a'/partial a
-   */
-  // 最後の結果が初期条件aによってどのような影響を受けいているかを微分によって評価
-  double GetAprime_deriv(double a, double z, double theta, double phi) {
-    SetZ(z);
-    SetTheta(theta);
-    SetPhi(phi);
-    gsl_function F;
-    F.function = f_aprime;
-    F.params = this;
-    double result, err;
-    gsl_deriv_forward(&F, a, 0.001, &result, &err);
-    return result;
-  }
-
-    // ファイバーのabsorptionの効果を計算する
-  /* @param psi Azimuthal angle with respect to the cross-section of the fiber*/
-    //aの初期位置を決定する分布関数
-  double Get_a_initial_distribution(double a) {
-    // まだ読み込んでいなければ読み込む (Lazy Loading)
-    if (!is_table_loaded) {
-      PrepareTable();
-    }
-
-    // 範囲外チェック
-    if (table_a.empty()) return 0.0;
-    if (a <= table_a.front()) return table_val.front();
-    if (a >= table_a.back()) return 0.0; // 範囲外は0とする場合
-
-    // --- 二分探索と線形補間 (高速) ---
-    // a 以上の最初のイテレータを見つける
-    auto it = lower_bound(table_a.begin(), table_a.end(), a);
-    
-    size_t idx = distance(table_a.begin(), it);
-    
-    double x1 = table_a[idx - 1];
-    double x2 = table_a[idx];
-    double y1 = table_val[idx - 1];
-    double y2 = table_val[idx];
-
-    // 線形補間: y = y1 + (x - x1) * (y2 - y1) / (x2 - x1)
-    return y1 + (a - x1) * (y2 - y1) / (x2 - x1);
-  }
-
-  //Escap angle Distribution
-  double Escape_angle_distribution(double theta, double a){
-    double n_ice = 1.309;
-    double n =  n_ice / GetN0();
-    double weight_a = Get_a_initial_distribution(a);
-    double weight_jac = n * sqrt(1 - sin(theta)*sin(theta) / (n*n))/cos(theta);
-    double weight = weight_a * weight_jac;
-    return weight;
-  };
-
-  double dPdTheta_escape(double theta) { 
-    gsl_function F;
-    F.function = f_integral_escape_dist;
-    F.params = this;
-    SetTheta(theta);
-    double result, err;
-    double epsabs = 1e-10; // 絶対誤差の許容値
-    double epsrel = 1e-5;  // 相対誤差の許容値
-    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(5000);
-    gsl_integration_qag(&F, 0, _d1, epsabs, epsrel, 5000, GSL_INTEG_GAUSS41, local_w, &result, &err);
-    gsl_integration_workspace_free(local_w);
-    double c = cos(theta);
-    double s = sin(theta);
-    double att = 1.0 - exp(-_L/c/_Latt);
-    return 2.0*result/_d1/_d1*s*c*_Latt*att/_L;
-  };
 
   void Calc_escape_angle(const char *fileName, double thetaStep = 1.0){
     double theta = 0.0;
@@ -1109,7 +1017,8 @@ private:
     double L = GetL();
     double l = L - z;
     double dPdtheta = dPdTheta(a, theta);
-    return c_core*costheta*costheta/l*dPdtheta;
+    double att = exp(-l/costheta/_Latt);
+    return c_core*costheta*costheta/l*dPdtheta*att;
   }
 
   /**
@@ -1136,6 +1045,100 @@ private:
     return 2.0*result/_d1/_d1;
   }
 
+  /**
+   * 仕様書には不記載
+   * Transit timeを計算する式
+   */
+  double Transit_time(double theta, double z){
+    double c = GetLightSpeed(); 
+    double c_core = c/_n0;
+    double costheta = cos(theta);
+    double L = GetL();
+    double l = (L - z)/costheta;
+    return l/c_core;
+  }
+
+  /**
+   * Komae's (18)
+   */
+  double GetAprime(double a, double z, double theta, double phi) {
+    SetZ(z);
+    SetTheta(theta);
+    SetPhi(phi);
+    return f_aprime(a, this);
+  }
+
+  /**
+   * Derivative of (18) with respect to a, partial a'/partial a
+   */
+  // 最後の結果が初期条件aによってどのような影響を受けいているかを微分によって評価
+  double GetAprime_deriv(double a, double z, double theta, double phi) {
+    SetZ(z);
+    SetTheta(theta);
+    SetPhi(phi);
+    gsl_function F;
+    F.function = f_aprime;
+    F.params = this;
+    double result, err;
+    gsl_deriv_forward(&F, a, 0.001, &result, &err);
+    return result;
+  }
+
+  // ファイバーのabsorptionの効果を計算する
+  /* @param psi Azimuthal angle with respect to the cross-section of the fiber*/
+  //aの初期位置を決定する分布関数
+  double Get_a_initial_distribution(double a) {
+    // まだ読み込んでいなければ読み込む (Lazy Loading)
+    if (!is_table_loaded) {
+      PrepareTable();
+    }
+
+    // 範囲外チェック
+    if (table_a.empty()) return 0.0;
+    if (a <= table_a.front()) return table_val.front();
+    if (a >= table_a.back()) return 0.0; // 範囲外は0とする場合
+
+    // --- 二分探索と線形補間 (高速) ---
+    // a 以上の最初のイテレータを見つける
+    auto it = lower_bound(table_a.begin(), table_a.end(), a);
+    
+    size_t idx = distance(table_a.begin(), it);
+    
+    double x1 = table_a[idx - 1];
+    double x2 = table_a[idx];
+    double y1 = table_val[idx - 1];
+    double y2 = table_val[idx];
+
+    // 線形補間: y = y1 + (x - x1) * (y2 - y1) / (x2 - x1)
+    return y1 + (a - x1) * (y2 - y1) / (x2 - x1);
+  }
+
+  //Escap angle Distribution
+  double Escape_angle_distribution(double theta, double a){
+    double n_ice = 1.309;
+    double n =  n_ice / GetN0();
+    double weight_a = Get_a_initial_distribution(a);
+    double weight_jac = n * sqrt(1 - sin(theta)*sin(theta) / (n*n))/cos(theta);
+    double weight = weight_a * weight_jac;
+    return weight;
+  };
+
+  double dPdTheta_escape(double theta) { 
+    gsl_function F;
+    F.function = f_integral_escape_dist;
+    F.params = this;
+    SetTheta(theta);
+    double result, err;
+    double epsabs = 1e-10; // 絶対誤差の許容値
+    double epsrel = 1e-5;  // 相対誤差の許容値
+    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(5000);
+    gsl_integration_qag(&F, 0, _d1, epsabs, epsrel, 5000, GSL_INTEG_GAUSS41, local_w, &result, &err);
+    gsl_integration_workspace_free(local_w);
+    double c = cos(theta);
+    double s = sin(theta);
+    double att = 1.0 - exp(-_L/c/_Latt);
+    return 2.0*result/_d1/_d1*s*c*_Latt*att/_L;
+  };
 };
 
 #endif

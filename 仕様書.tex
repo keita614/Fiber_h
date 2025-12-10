@@ -276,11 +276,13 @@ Double & $1.59$ & $1.49$ & $1.42$ & $0.10120 \pm 0.00000$ & $0.08438 \pm 0.00001
 \begin{equation}
   \frac{dP(a, z)}{dt} =\frac{dP(a, z)}{dl} \frac{dl}{dt} = \frac{c' \cos^2 \theta}{L-z} \frac{dP(a, z)}{d\cos \theta} = \frac{c'}{2 \pi} \frac{\cos^2\theta}{L-z}\int_{\Phi(\theta)} d \phi \label{eq:dPdt}
 \end{equation}
-これの$\theta $に関する平均化を行う。
-\begin{equation}
-  \left< \frac{dP}{dt} \right>_\theta = \int_{0}^{\pi/2}\sin \theta \frac{dP(a, z)}{dt} d\theta = \frac{c'}{2 \pi} \int_{0}^{\pi/2} \int_{\Phi(\theta)} \sin \theta \frac{\cos^2\theta}{L-z} d \phi d\theta = c' \int_{0}^{\pi/2} \frac{\cos^2\theta}{L-z} \frac{dP(a, \theta)}{d\theta} d\theta
+これの$\theta $に関する平均化を行う。また、attenuationの効果を考慮に入れるため、減衰項を含める。
+\begin{align}
+  \left< \frac{dP}{dt} \right>_\theta &= \int_{0}^{\pi/2}\sin \theta \frac{dP(a, z)} \exp\left( -\frac{L - z}{\cos \theta \Latt} \right){dt} d\theta \nonumber\\
+  &= \frac{c'}{2 \pi} \int_{0}^{\pi/2} \int_{\Phi(\theta)} \sin \theta \frac{\cos^2\theta}{L-z}\exp\left( -\frac{L - z}{\cos \theta \Latt}\right) d \phi d\theta \nonumber\\
+  &= c' \int_{0}^{\pi/2} \frac{\cos^2\theta}{L-z} \exp\left( -\frac{L - z}{\cos \theta \Latt}\right) \frac{dP(a, \theta)}{d\theta} d\theta 
   \label{eq:averaged_dPdt}
-\end{equation}
+\end{align}
 \eqref{eq:averaged_dPdt}を用いて、それぞれの変数を細かなスッテプで刻むことにより、時間分布を求めることができる。
 それが以下である。
 \begin{figure}[h]

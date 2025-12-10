@@ -319,8 +319,10 @@ public:
 
     fclose(fp);
   }
+  
   /**
-   * 
+   *仕様書式(31)の計算本体のOpenMP並列化版
+   *Calc_dPdt_solid_zのOpenMP並列化とzステップ対応版
    */
   void Calc_dPdt_a_with_a_dist(const char *fileName, double thetaStep = 1, double zStep = 1){
     // Structure to hold results to avoid concurrent file writing

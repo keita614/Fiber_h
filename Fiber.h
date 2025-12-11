@@ -175,17 +175,17 @@ public:
 
     double a = 0.0;
     while (a < _d1) {
-      double dNdA = Calc_a_dist_average_over_psi(a);      
+      // double dNdA = Calc_a_dist_average_over_psi(a);      
       double Paresult = Calc_Pa(a);      
       double Pattaresult = Calc_Pa_average_over_z(a);
-      fprintf(fp, "%e %e %e\n", a, Paresult*dNdA, Pattaresult*dNdA);
+      fprintf(fp, "%e %e %e\n", a, Paresult, Pattaresult);
       a += 0.005;
     }
-    a = _d1;
-    double dNdA = Calc_a_dist_average_over_psi(a);    
-    double Paresult = Calc_Pa(a);    
-    double Pattaresult = Calc_Pa_average_over_z(a);
-    fprintf(fp, "%e %e %e\n", a, Paresult*dNdA, Pattaresult*dNdA);    
+    // a = _d1;
+    // double dNdA = Calc_a_dist_average_over_psi(a);    
+    // double Paresult = Calc_Pa(a);    
+    // double Pattaresult = Calc_Pa_average_over_z(a);
+    // fprintf(fp, "%e %e %e\n", a, Paresult*dNdA, Pattaresult*dNdA);    
     fclose(fp);
   }
 
@@ -529,6 +529,16 @@ private:
   }
 
   /**
+   * 式(13)の分母の被積分項
+   * 平均効率計算の分母（正規化定数）を求めるための被積分項。
+   * 単純に dN/da を返す。
+   */
+  static double f_integral_normalization_factor(double a, void *data) {
+    Fiber *fiber = (Fiber *) data;
+    return fiber->Calc_a_dist_average_over_psi(a);
+  }
+
+  /**
    * 仕様書式(13)の被積分項
    * Trapping Efficiency P(a)をaで積分するための被積分項
    */
@@ -713,7 +723,7 @@ private:
    * aの初期位置の分布dN/daをについて、ファイバーへの入射角ψで平均化したもの
    */
   double Calc_a_dist_average_over_psi(double a){
-    if(isnan(_Labs)){return 1.0;}
+    if(isnan(_Labs)){return a;}
     else{
       SetA(a);
       double upper_limit;
@@ -862,6 +872,24 @@ private:
   }
 
   /**
+   * 仕様書式(13)の分母の積分本体
+   * 重みの総和（全生成光量に相当）を計算する。
+   * Denominator = ∫ (dN/da) da  (積分範囲: 0 to d1)
+   */
+  double Calc_normalization_factor() {
+    if(isnan(_Labs)){return 0.5 * _d1 * _d1;} 
+    gsl_function F;
+    F.function = f_integral_normalization_factor;
+    F.params = this;
+    double result, err;
+    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
+    gsl_integration_qag(&F, 0, _d1, 0, 1e-5, 1000, GSL_INTEG_GAUSS41, local_w, &result, &err);
+    gsl_integration_workspace_free(local_w);
+    
+    return result;
+  }
+
+  /**
    * 仕様書式(13)の積分本体
    * Trapping Efficiency P(a)をaで平均化する計算
    */
@@ -869,13 +897,19 @@ private:
     gsl_function F;
     F.function = f_integral_average_over_a;
     F.params = this;
-    double result, err;
+    double num_result, num_err;
     gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
-    gsl_integration_qag(&F, 0, _d1, 0, 1e-5, 1000, GSL_INTEG_GAUSS41, local_w, &result, &err);
+    gsl_integration_qag(&F, 0, _d1, 0, 1e-5, 1000, GSL_INTEG_GAUSS41, local_w, &num_result, &num_err);
     gsl_integration_workspace_free(local_w);
-    _P = 2.0*result/_d1/_d1;
-    _Perr = 2.0*err/_d1/_d1;
-    return 2.0*result/_d1/_d1;
+    double total_weight = Calc_normalization_factor();
+    if (total_weight == 0.0) {
+        _P = 0.0;
+        _Perr = 0.0;
+    } else {
+        _P = num_result / total_weight;
+        _Perr = num_err / total_weight;
+    }
+    return _P;
   }
 
   // 仕様書5章 //
@@ -910,8 +944,8 @@ private:
     F.function = f_integral_average_over_z;
     F.params = this;
     double result, err;
-    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
-    gsl_integration_qag(&F, 0, _L, 0, 1e-3, 1000, GSL_INTEG_GAUSS31, local_w, &result, &err);
+    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(5000);
+    gsl_integration_qag(&F, 0, _L, 0, 1e-3, 5000, GSL_INTEG_GAUSS31, local_w, &result, &err);
     gsl_integration_workspace_free(local_w);
     _result = result/_L;
     _err = err/_L;
@@ -926,13 +960,20 @@ private:
     gsl_function F;
     F.function = f_integral_average_over_za;
     F.params = this;
-    double result, err;
-    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
-    gsl_integration_qag(&F, 0, _d1, 0, 1e-3, 1000, GSL_INTEG_GAUSS31, local_w, &result, &err);
+    double num_result, num_err;
+    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(5000);
+    gsl_integration_qag(&F, 0, _d1, 0, 1e-3, 5000, GSL_INTEG_GAUSS31, local_w, &num_result, &num_err);
     gsl_integration_workspace_free(local_w);
-    _Patt = 2*result/_d1/_d1;
-    _Patterr = 2*err/_d1/_d1;
-    return 2*result/_d1/_d1;
+    double total_weight = Calc_normalization_factor();
+    if (total_weight == 0.0) {
+        _Patt = 0.0;
+        _Patterr = 0.0;
+    } else {
+        _Patt = num_result / total_weight;
+        _Patterr = num_err / total_weight;
+    }
+
+    return _Patt;
   }
 
   // 仕様書6章1節 //

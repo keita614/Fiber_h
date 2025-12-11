@@ -136,7 +136,7 @@ $\mumin(\phi, a)$は式\eqref{eq:cospsic2}のように計算される。
 式\eqref{eq:solidangle1}の積分は数値積分により計算され、その結果が図\ref{fig:trapp_eff}である。
 Trapping Efficiencyをコア軸からの距離$a$で平均化する計算は次の式で行われる。
 \begin{align}
-  \left<P\right> &= \frac{1}{\pi d^2} \int_0^{d} 2 \pi \left<\frac{dN}{da}\right>_{\psi} P(a) \, da. \label{eq:Pd1}
+  \left<P\right> &= \frac{1}{\int_0^{d} 2 \pi \left<\frac{dN}{da}\right>_{\psi} \, da} \int_0^{d} 2 \pi \left<\frac{dN}{da}\right>_{\psi} P(a) \, da. \label{eq:Pd1}
 \end{align}
 Single-claddingファイバーの$n_0 = 1.59, n_1 = 1.49$と$d = 0.48$ mmに対して、$\left<P\right> = 0.061$と計算される。
 これは図\ref{fig:trapp_eff}の水平な線と\ref{tab:my_label}の値を記されている。

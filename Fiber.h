@@ -52,7 +52,9 @@ public:
     _d1 = d1;
     _L = L;
     _Latt = Latt;
-    _Labs = Labs;       
+    _Labs = Labs;
+    _is_norm_factor_calculated = false;
+    _cached_norm_factor = 0.0;
   }
   /*!
    * Constructor for a fiber
@@ -72,6 +74,8 @@ public:
     _L = L;
     _Latt = Latt;
     _Labs = Labs;
+    _is_norm_factor_calculated = false;
+    _cached_norm_factor = 0.0;
   }  
 
   // ===========================================================================================
@@ -174,8 +178,7 @@ public:
     printf("P = %e +/- %e, Patt = %e +/- %e\n", _P, _Perr, _Patt, _Patterr);
 
     double a = 0.0;
-    while (a < _d1) {
-      // double dNdA = Calc_a_dist_average_over_psi(a);      
+    while (a < _d1) {     
       double Paresult = Calc_Pa(a);      
       double Pattaresult = Calc_Pa_average_over_z(a);
       fprintf(fp, "%e %e %e\n", a, Paresult, Pattaresult);
@@ -470,7 +473,7 @@ public:
 
 private:
   // ===========================================================================================
-  //  1. メンバ変数 (Member Variables)
+  //  4. メンバ変数 (Member Variables)
   //     - クラス全体で使うデータはここにまとめる
   // ===========================================================================================
 
@@ -498,9 +501,11 @@ private:
   vector<double> table_val; //計算された初期位置分布の値
   bool is_table_loaded = false; //読み込み済みフラグ
   const string table_filename = "Initial_a_distribution.txt"; //保存ファイル名
+  double _cached_norm_factor; // 企画化定数を計算結果を保存する変数
+  bool _is_norm_factor_calculated = false;  // 計算済みかどうか判定するフラグ
 
   // ===========================================================================================
-  //  2. gslを用いた積分用のstatic関数
+  //  5. gslを用いた積分用のstatic関数
   //      見なくていい、理解したいなら頑張れ
   // ===========================================================================================
 
@@ -695,7 +700,7 @@ private:
   }
 
   // ===========================================================================================
-  //  3. gsl以外のprivateな関数
+  //  6. gsl以外のprivateな関数
   //      ここも見なくていいが、新しい関数を作成したいのなら理解したほうがいい
   // ===========================================================================================
 
@@ -807,6 +812,9 @@ private:
    * 基本はこの関数を使う
    */
   double Get_a_initial_distribution(double a) {
+    if (isnan(_Labs)) {
+        return a; // 吸収長が無限大ならば、初期位置分布は線形
+    }
     // まだ読み込んでいなければ読み込む (Lazy Loading)
     if (!is_table_loaded) {
       PrepareTable();
@@ -830,6 +838,26 @@ private:
 
     // 線形補間: y = y1 + (x - x1) * (y2 - y1) / (x2 - x1)
     return y1 + (a - x1) * (y2 - y1) / (x2 - x1);
+  }
+  
+  /**
+   * a平均に必要な正規化の積分本体
+   * 重みの総和（全生成光量に相当）を計算する。
+   * Denominator = ∫ (dN/da) da  (積分範囲: 0 to d1)
+   */
+  double Calc_normalization_factor() {
+    if(_is_norm_factor_calculated) {return _cached_norm_factor;}
+    double result;
+    if(isnan(_Labs)){return result = 0.5 * _d1 * _d1;} 
+    gsl_function F;
+    F.function = f_integral_normalization_factor;
+    F.params = this;
+    double err;
+    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
+    gsl_integration_qag(&F, 0, _d1, 0, 1e-5, 1000, GSL_INTEG_GAUSS41, local_w, &result, &err);
+    gsl_integration_workspace_free(local_w);
+    
+    return result;
   }
 
   // 仕様書4章 //
@@ -872,24 +900,6 @@ private:
   }
 
   /**
-   * 仕様書式(13)の分母の積分本体
-   * 重みの総和（全生成光量に相当）を計算する。
-   * Denominator = ∫ (dN/da) da  (積分範囲: 0 to d1)
-   */
-  double Calc_normalization_factor() {
-    if(isnan(_Labs)){return 0.5 * _d1 * _d1;} 
-    gsl_function F;
-    F.function = f_integral_normalization_factor;
-    F.params = this;
-    double result, err;
-    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
-    gsl_integration_qag(&F, 0, _d1, 0, 1e-5, 1000, GSL_INTEG_GAUSS41, local_w, &result, &err);
-    gsl_integration_workspace_free(local_w);
-    
-    return result;
-  }
-
-  /**
    * 仕様書式(13)の積分本体
    * Trapping Efficiency P(a)をaで平均化する計算
    */
@@ -901,13 +911,13 @@ private:
     gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
     gsl_integration_qag(&F, 0, _d1, 0, 1e-5, 1000, GSL_INTEG_GAUSS41, local_w, &num_result, &num_err);
     gsl_integration_workspace_free(local_w);
-    double total_weight = Calc_normalization_factor();
-    if (total_weight == 0.0) {
+    double normalization_factor = Calc_normalization_factor();
+    if (normalization_factor == 0.0) {
         _P = 0.0;
         _Perr = 0.0;
     } else {
-        _P = num_result / total_weight;
-        _Perr = num_err / total_weight;
+        _P = num_result / normalization_factor;
+        _Perr = num_err / normalization_factor;
     }
     return _P;
   }
@@ -1011,7 +1021,8 @@ private:
     double c = cos(theta);
     double s = sin(theta);
     double att = 1.0 - exp(-_L/c/_Latt);
-    return 2.0*result/_d1/_d1*s*c*_Latt*att/_L;
+    double normalization_factor = Calc_normalization_factor();
+    return result*s*c*_Latt*att/_L/normalization_factor;
   }
 
   /**
@@ -1039,7 +1050,8 @@ private:
     double c = cos(theta);
     double s = sin(theta);
     double att = c*_Latt - exp(-_L/c/_Latt)*(c*_Latt + _L);
-    return 2.0*result/_d1/_d1*s*_Latt*att/_L/c;
+    double normalization_factor = Calc_normalization_factor();
+    return result*s*_Latt*att/_L/c/normalization_factor;
   }
 
   // 仕様書6章3節 //
@@ -1082,7 +1094,8 @@ private:
         printf("Warning: Integration did not converge in dPdt_a(z=%f, theta=%f)\n", z, theta);
         return 0.0; 
     }
-    return 2.0*result/_d1/_d1;
+    double normalization_factor = Calc_normalization_factor();
+    return result/normalization_factor;
   }
 
   /**
@@ -1131,7 +1144,8 @@ private:
     double c = cos(theta);
     double s = sin(theta);
     double att = 1.0 - exp(-_L/c/_Latt);
-    return 2.0*result/_d1/_d1*s*c*_Latt*att/_L;
+    double normalization_factor = Calc_normalization_factor();
+    return 2.0*result*s*c*_Latt*att/_L/normalization_factor;
   };
 
   // 未記載 //

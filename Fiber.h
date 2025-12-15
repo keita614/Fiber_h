@@ -471,6 +471,30 @@ public:
     fclose(fp);
   }
 
+  // 仕様書第7章 //
+  /**
+   * 仕様書式(43)の計算本体
+   * ファイバー全体で平均化したTrapping Efficiencyに反射率のファクターがかかった時のa分布を計算する
+   */
+  void Calc_Patta_R(const char *fileName, double astep = 0.005) {
+    FILE *fp = fopen(fileName, "w");
+    Calc_P_reflection_average_over_za();
+    fprintf(fp, "# a P_R(a)\n");
+    fprintf(fp, "# n0 = %3.2f, n1 = %3.2f, n2 = %3.2f\n", _n0, _n1, _n2);
+    fprintf(fp, "# d = %f mm, L = %f mm, Latt = %f mm\n", _d1, _L, _Latt);
+    fprintf(fp, "# P_R = %e */- %e\n", _Patt, _Patterr);
+    fprintf(fp, "%e\n", _Patt);
+    printf("Patt = %e +/- %e\n", _Patt, _Patterr);
+    double a = 0.0;
+    while (a < _d1) {     
+      double Paresult = Calc_Pa_reflection_average_over_z(a);
+      fprintf(fp, "%e %e\n", a, Paresult);
+      printf("Finished a = %f mm\n", a);
+      a += 0.005;
+    }
+    fclose(fp);
+  }
+
 private:
   // ===========================================================================================
   //  4. メンバ変数 (Member Variables)
@@ -672,6 +696,67 @@ private:
     double dPdTheta = fiber->dPdTheta(a, theta);
     double weight = fiber->Escape_angle_distribution(theta, a);
     return weight*dPdTheta;
+  }
+
+  // 仕様書第7章 //
+
+  /**
+   * 仕様書式(43)の被積分項
+   * Trapping Efficiencyに反射率のファクターがかかった時のa分布を計算するための被積分項
+   * 反射回数が階段状に変化しないようにするためにNはdouble型で返すようにしている
+   */
+  static double f_integral_reflection(double mu, void *data) {
+    Fiber *fiber = (Fiber *) data;
+    double L = fiber->GetL();
+    double Latt = fiber->GetLatt();  
+    double z = fiber->GetZ();
+    double a = fiber->GetA();
+    double phi = fiber->GetPhi();
+    double R = 0.99; //反射率
+    if (fabs(mu) < 1e-6) return 0;
+    double att = exp(-(L-z)/mu/Latt);
+    double N = fiber->Number_of_reflection(a, mu, phi, z);
+    return att* pow(R, N);
+  }
+
+  /**
+   * 仕様書式(43)のmuの積分本体
+   * Trapping Efficiencyに反射率のファクターがかかった時のa分布を計算するための被積分項
+   */
+  static double f_integral_reflection_phi_att(double phi, void *data) {
+    Fiber *fiber = (Fiber *) data;
+    gsl_function F;
+    F.function = f_integral_reflection;
+    F.params = data;
+    double a = fiber->GetA();
+    double mumin = fiber->Calc_cosThetaMax(phi, a);
+    double result, err;
+    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
+    gsl_integration_qag(&F, mumin, 1, 0, 1e-6, 1000, GSL_INTEG_GAUSS31, local_w, &result, &err);
+    gsl_integration_workspace_free(local_w); 
+    return result;
+  }
+
+  /**
+   * 仕様書式(44)の被積分項
+   * Trapping Efficiencyに反射率のファクターがかかった時のa分布をzで平均化するための被積分項
+   */
+  static double f_integral_reflection_average_over_z(double z, void *data) {
+    Fiber *fiber = (Fiber *) data;
+    double a = fiber->GetA();
+    double Paz = fiber->Calc_Paz_reflection(a, z);
+    return Paz;
+  }
+
+  /**
+   * 仕様書式(45)の被積分項
+   * Trapping Efficiencyに反射率のファクターがかかった時のa分布をzで平均化し、さらにaで平均化するための被積分項
+   */
+  static double f_integral_reflection_average_over_za(double a, void *data) {
+    Fiber *fiber = (Fiber *) data;
+    double Pa = fiber->Calc_Pa_reflection_average_over_z(a);
+    double dNdA = fiber->Get_a_initial_distribution(a);
+    return dNdA*Pa;
   }
 
   // 未記載 //
@@ -1147,6 +1232,88 @@ private:
     double normalization_factor = Calc_normalization_factor();
     return 2.0*result*s*c*_Latt*att/_L/normalization_factor;
   };
+
+  // 仕様書第7章 //
+
+  /**
+   * 仕様書式(42)
+   * ファイバー内で光子が反射する回数
+   */
+  double Number_of_reflection(double a, double mu, double phi, double z) {
+    double term =_d1*_d1 - a*a*sin(phi)*sin(phi);
+    if (term <= 0) {return 0.0;} // 安全対策
+    double b = sqrt(term); //光子の反射点から次の反射点までの水平方向の距離の半分
+    double l = 2.0*b;
+        // ゼロ除算ガード
+    if (l < 1e-12) {
+        // 壁スレスレで発光した場合など。反射回数の定義によるが、
+        // 無限回反射とみなすか0とみなすか。ここではエラー回避を優先。
+        return 1e9; 
+    }
+    double A = (_L - z)*sqrt(1/(mu*mu) - 1); //光子の水平方向の総移動距離
+    double N = A / l; //反射回数
+    return N;
+  }
+
+  /**
+   * 仕様書式(43)の積分本体
+   * Trapping Efficiencyに反射率のファクターがかかった時のa分布を計算するための被積分項
+   */
+  double Calc_Paz_reflection(double a, double z) {
+    gsl_function F;
+    SetA(a);
+    SetZ(z);  
+    F.function = f_integral_reflection_phi_att;
+    F.params = this;
+    double result, err;
+    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(1000);
+    gsl_integration_qag(&F, 0, 2.0*M_PI, 0, 1e-3, 1000, GSL_INTEG_GAUSS31, local_w, &result, &err);
+    gsl_integration_workspace_free(local_w);
+    _result = result/4/M_PI;
+    _err = err/4/M_PI;  
+    return result/4/M_PI;  
+  }
+
+  /**
+   * 仕様書式(44)の積分本体
+   * Trapping Efficiencyに反射率のファクターがかかった時のa分布をzで平均化するための被積分項
+   */
+  double Calc_Pa_reflection_average_over_z(double a) {
+    SetA(a);
+    gsl_function F;
+    F.function = f_integral_reflection_average_over_z;
+    F.params = this;
+    double result, err;
+    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(5000);
+    gsl_integration_qag(&F, 0, _L, 0, 1e-3, 5000, GSL_INTEG_GAUSS31, local_w, &result, &err);
+    gsl_integration_workspace_free(local_w);
+    _result = result/_L;
+    _err = err/_L;
+    return result/_L;
+  }
+
+  /**
+   * 仕様書式(45)の積分本体
+   * Trapping Efficiencyに反射率のファクターがかかった時のa分布をzで平均化し、さらにaで平均化したもの
+   */
+  double Calc_P_reflection_average_over_za() {
+    gsl_function F;
+    F.function = f_integral_reflection_average_over_za;
+    F.params = this;
+    double num_result, num_err;
+    gsl_integration_workspace *local_w = gsl_integration_workspace_alloc(5000);
+    gsl_integration_qag(&F, 0, _d1, 0, 1e-3, 5000, GSL_INTEG_GAUSS31, local_w, &num_result, &num_err);
+    gsl_integration_workspace_free(local_w);
+    double total_weight = Calc_normalization_factor();
+    if (total_weight == 0.0) {
+        _Patt = 0.0;
+        _Patterr = 0.0;
+    } else {
+        _Patt = num_result / total_weight;
+        _Patterr = num_err / total_weight;
+    }
+    return _Patt;
+  }
 
   // 未記載 //
 

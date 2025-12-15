@@ -379,6 +379,45 @@ Geant4の計算では$z$を固定しているため、$z$を固定して計算�
   \caption{Trapping Efficiency Escape Angle Distribution}
   \label{fig:Escape_Angle_Distribution}
 \end{figure}
+
+\section{反射率によるTrapping Efficiencyの変化}
+ファイバー内で発行した光は、理想的な状態においては、最外層のcladとの境界で全反射を起こし続ける。
+しかし、実際には境界での反射率は100\%ではなく、いくらかの光が透過してファイバー外に逃げてしまう。
+そこで、境界での反射率$R$を考慮に入れたTrapping Efficiencyを計算する。
+光がコア軸からの距離$a$、方位角$\phi$で放射されたとする。
+光がファイバー内で一度反射し、次に反射するまでの距離を$l_{step}$とすると、$l_{step}$のファイバー断面に射影した時の長さ$l_{step}^{xy}$は次の式で表される。
+\begin{align}
+  l_{step}^{xy} &= 2 \sqrt{d^2-(a \sin \phi)^2} \label{eq:Lstep}
+\end{align}
+よって、$l_{step}$は次のように表される。
+\begin{align}
+  l_{step} &= \frac{l_{step}^{xy}}{\sin \theta} = \frac{2 \sqrt{d^2-(a \sin \phi)^2}}{\sin \theta} \label{eq:Lstep_full}
+\end{align}
+光がファイバー内で伝播する距離$l$に対して、反射回数$N_{ref}$は次のように表される。
+\begin{align}
+  N_{ref} &= \frac{l}{l_{step}} = \frac{l \sin \theta}{2 \sqrt{d^2-(a \sin \phi)^2}}
+\end{align}
+ここで、式(\eqref{eq:pathlengthcostheta})より$l = (L-z)/\cos \theta$であることに注意すると、反射回数は次のように表される。
+\begin{align}
+  N_{ref} = \frac{(L-z)/\cos \theta \cdot \sin \theta}{2 \sqrt{d^2-(a \sin \phi)^2}} &= \frac{(L-z) \tan \theta}{2 \sqrt{d^2-(a \sin \phi)^2}} \nonumber \\
+  &= \frac{(L-z)}{2 \sqrt{d^2-(a \sin \phi)^2}}\sqrt{\frac{1}{\cos^2 \theta} - 1} \nonumber\\ &= \frac{(L-z)}{2 \sqrt{d^2-(a \sin \phi)^2}}\sqrt{\frac{1}{\mu^2} - 1}
+  \label{eq:Nref}
+\end{align}
+ここで、式\eqref{eq:Paz}と同様にすると、反射率$R$を考慮に入れたTrapping Efficiencyは次のように表される。
+\begin{align}
+  P_R(a, z) &= \frac{1}{4 \pi} \int_{\Phi} \int_{\mumin(\phi, a)}^1 R^{N_{ref}} \exp\left( -\frac{L - z}{\mu \Latt}\right) \, d\mu \, d\phi, \label{eq:PRaz}
+\end{align}
+また、光がファイバー内で一様に発せられると考えた場合、式\eqref{eq:avezPa}と同様にして$z$で平均化されたTrapping Efficiencyは次のようになる。
+\begin{align}
+  P_{R, \mathrm{att}}(a) &= \frac{1}{L} \int_0^L P_R(a, z) \, dz \label{eq:PRatt}
+\end{align}
+よって、反射率を考慮に入れた場合のTrapping Efficiencyは次のように計算される。
+\begin{align}
+  \left<P_R\right> &= \frac{1}{V}\int_{V} P_R(a, z) \, dV =
+  \frac{1}{\int_0^{d} 2 \pi \left<\frac{dN}{da}\right>_{\psi} \, da} \int_{0}^{d} R^{N_{ref}} 2 \pi P_{R, \mathrm{att}}(a)\left<\frac{dN}{da}\right>_{\psi}\, da \label{eq:PRaz}
+\end{align}
+ここで、$N_{ref}$は式\eqref{eq:Nref}で与えられる。
+
 \section{Fiber.hに実装されている関数の仕様}
 
 \end{document}

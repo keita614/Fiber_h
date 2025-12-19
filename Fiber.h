@@ -319,7 +319,6 @@ public:
       fflush(stdout);
       theta += dTheta;
     }
-
     fclose(fp);
   }
   
@@ -694,8 +693,9 @@ private:
     Fiber *fiber = (Fiber *) data;
     double theta = fiber->GetTheta();
     double dPdTheta = fiber->dPdTheta(a, theta);
-    double weight = fiber->Escape_angle_distribution(theta, a);
-    return weight*dPdTheta;
+    double jacob = fiber->Escape_angle_distribution(theta, a);
+    double dNdA = fiber->Get_a_initial_distribution(a);
+    return jacob*dPdTheta*dNdA;
   }
 
   // 仕様書第7章 //

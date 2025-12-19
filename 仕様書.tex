@@ -2,7 +2,7 @@
 \usepackage{amsmath,amsfonts, amssymb}
 \usepackage{bm}
 \usepackage{physics}
-\usepackage[dvipdfmx]{graphicx}
+\usepackage[dvipdfmx]{hyperref, graphicx}
 \usepackage{tikz} 
 
 
@@ -16,6 +16,14 @@
 \newcommand{\phimax}{\phi_{\mathrm{max}}}
 \newcommand{\Latt}{L_{\mathrm{att}}}
 \newcommand{\mumin}{\mu_{\mathrm{min}}}
+
+\hypersetup{
+	colorlinks=blue, % リンクに色をつけない設定
+	bookmarks=true, % 以下ブックマークに関する設定
+	bookmarksnumbered=true,
+	pdfborder={0 0 0},
+	bookmarkstype=toc
+}
 
 \title{光ファイバー内で考えられる光の伝播モデル}
 \date{\today}
